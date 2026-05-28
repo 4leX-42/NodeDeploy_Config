@@ -1,0 +1,24 @@
+<Configuration ID="NodeDeploy-Add-Word-Excel-PPT">
+  <!-- Add Word/Excel/PowerPoint to existing C2R install. iManage Work Desktop requires Word presence. -->
+  <Add OfficeClientEdition="64"
+       Channel="Current"
+       AllowCdnFallback="TRUE"
+       OfficeMgmtCOM="TRUE">
+    <Product ID="O365ProPlusRetail">
+      <Language ID="es-es" />
+      <Language ID="en-us" />
+      <ExcludeApp ID="Access" />
+      <ExcludeApp ID="Groove" />
+      <ExcludeApp ID="Lync" />
+      <ExcludeApp ID="OneDrive" />
+      <ExcludeApp ID="OneNote" />
+      <ExcludeApp ID="Publisher" />
+      <ExcludeApp ID="Teams" />
+      <ExcludeApp ID="Bing" />
+    </Product>
+  </Add>
+  <Updates Enabled="TRUE" Channel="Current" />
+  <Display Level="None" AcceptEULA="TRUE" />
+  <Logging Level="Standard" Path="%TEMP%\OfficeSetup_AddApps" />
+  <Property Name="FORCEAPPSHUTDOWN" Value="TRUE" />
+</Configuration>

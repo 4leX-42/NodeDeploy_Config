@@ -1,0 +1,52 @@
+<Configuration ID="NodeDeploy-Office-Core-For-iManage">
+  <!--
+    Microsoft 365 Apps for Enterprise — perfil minimo compatible con iManage Work Desktop 10.9.x.
+    iManage Work Desktop REQUIERE Word presente (detect MSI/C2R) ademas de Outlook.
+    Por eso este XML incluye Word + Excel + PowerPoint + Outlook (core productivity stack).
+    Excluye Access/OneNote/Publisher/Teams/OneDrive/Groove/Lync/Bing para ahorrar descarga.
+
+    Descarga ~1.5GB. Tiempo ~10-15min sobre fibra.
+
+    Si la maquina YA tiene Office full preinstalado (baseline corporativo), el handler
+    'office' en Deploy.ps1 detectara WINWORD.EXE y saltara este XML, o usara
+    OutlookClassic.exe bootstrap si solo falta Outlook.
+
+    El XML antiguo Outlook-only sigue disponible en configuration_OutlookOnly.xml.bak
+    por si se necesita escenario sin Word (NO compatible con iManage Work Desktop).
+  -->
+  <Add OfficeClientEdition="64"
+       Channel="Current"
+       ForceUpgrade="TRUE"
+       AllowCdnFallback="TRUE"
+       OfficeMgmtCOM="TRUE">
+    <Product ID="O365ProPlusRetail">
+      <Language ID="es-es" />
+      <Language ID="en-us" />
+      <ExcludeApp ID="Access" />
+      <ExcludeApp ID="Groove" />
+      <ExcludeApp ID="Lync" />
+      <ExcludeApp ID="OneDrive" />
+      <ExcludeApp ID="OneNote" />
+      <ExcludeApp ID="Publisher" />
+      <ExcludeApp ID="Teams" />
+      <ExcludeApp ID="Bing" />
+    </Product>
+  </Add>
+
+  <Updates Enabled="TRUE" Channel="Current" />
+
+  <AppSettings>
+    <Setup Name="Company" Value="Andersen" />
+  </AppSettings>
+
+  <Display Level="None" AcceptEULA="TRUE" />
+
+  <Logging Level="Standard" Path="%TEMP%\OfficeSetup_NodeDeploy" />
+
+  <Property Name="SharedComputerLicensing" Value="0" />
+  <Property Name="PinIconsToTaskbar" Value="FALSE" />
+  <Property Name="SCLCacheOverride" Value="0" />
+  <Property Name="AUTOACTIVATE" Value="0" />
+  <Property Name="FORCEAPPSHUTDOWN" Value="TRUE" />
+  <Property Name="DeviceBasedLicensing" Value="0" />
+</Configuration>

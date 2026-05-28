@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>NodeDeploy PRO v4.2 — Dashboard tecnico</title>
+<style>
+  :root {
+    --bg:#0d1117; --fg:#e6edf3; --mut:#8b949e; --accent:#58a6ff;
+    --ok:#3fb950; --warn:#d29922; --fail:#f85149; --card:#161b22;
+    --border:#30363d; --code:#1e2530; --hot:#ff7b72;
+  }
+  * { box-sizing:border-box }
+  body { background:var(--bg); color:var(--fg); font-family:-apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:24px; line-height:1.5; max-width:1400px }
+  h1 { color:var(--accent); margin:0 0 6px 0; font-size:24px }
+  h2 { color:var(--accent); margin:36px 0 10px 0; font-size:17px; border-bottom:1px solid var(--border); padding-bottom:5px }
+  h3 { color:#c9d1d9; margin:20px 0 8px 0; font-size:14px }
+  .sub { color:var(--mut); font-size:13px; margin-bottom:18px }
+  table { border-collapse:collapse; width:100%; font-size:12px; margin:8px 0 16px 0 }
+  th, td { border:1px solid var(--border); padding:6px 8px; vertical-align:top; text-align:left }
+  th { background:var(--card); color:var(--accent); font-weight:600 }
+  tr:nth-child(even) td { background:#10151b }
+  code, pre { font-family:Consolas,Monaco,monospace; font-size:11.5px }
+  code { background:var(--code); padding:1px 5px; border-radius:3px; color:#e1e4e8 }
+  pre { background:var(--code); padding:10px 12px; border-radius:5px; overflow-x:auto; border:1px solid var(--border); margin:6px 0 12px 0 }
+  .ok { color:var(--ok); font-weight:600 }
+  .warn { color:var(--warn); font-weight:600 }
+  .fail { color:var(--fail); font-weight:600 }
+  .hot { color:var(--hot); font-weight:600 }
+  .pill { display:inline-block; padding:1px 8px; border-radius:10px; font-size:10.5px; font-weight:600; white-space:nowrap }
+  .p-ok { background:#0f4a1f; color:#7ee787 }
+  .p-warn { background:#5a3d10; color:#f0c674 }
+  .p-fail { background:#5a1010; color:#ff8080 }
+  .p-info { background:#1f3a5a; color:#79c0ff }
+  .p-hot { background:#5a1010; color:#ffb0a0 }
+  .p-new { background:#0f4a3a; color:#79e4c0 }
+  .meta { color:var(--mut); font-size:11.5px }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:12px 16px; margin:12px 0 }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px }
+  .stat { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:10px 14px }
+  .stat .n { font-size:24px; font-weight:700; color:var(--accent) }
+  .stat .l { font-size:11px; color:var(--mut); text-transform:uppercase; letter-spacing:0.5px }
+  .small { font-size:11px; color:var(--mut) }
+  ul.lean { margin:4px 0 12px 18px; padding:0 }
+  ul.lean li { margin:3px 0 }
+  hr { border:none; border-top:1px solid var(--border); margin:22px 0 }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; margin-top:8px }
+  .toc { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:10px 16px; margin:12px 0; font-size:12px }
+  .toc a { color:var(--accent); text-decoration:none; margin-right:14px }
+  .toc a:hover { text-decoration:underline }
+  .kbd { display:inline-block; background:#21262d; border:1px solid #444c56; border-bottom-width:2px; border-radius:4px; padding:1px 6px; font-family:Consolas,monospace; font-size:11px }
+  .arrow { color:var(--mut) }
+</style>
+</head>
+<body>
+
+<h1>NodeDeploy PRO v4.2 — Dashboard tecnico</h1>
+<div class="sub">
+  Despliegue desatendido production-grade · 15 aplicaciones corporativas Andersen ·
+  Office en background paralelo · Snapshot-safe · Resumible · USB / Intune / Autopilot ready
+</div>
+
+<div class="grid3">
+  <div class="stat"><div class="n">15</div><div class="l">apps en config</div></div>
+  <div class="stat"><div class="n">6</div><div class="l">grupos de instalacion</div></div>
+  <div class="stat"><div class="n">~15-20m</div><div class="l">total esperado (Office bg)</div></div>
+</div>
+
+<div class="toc">
+  <b>Indice:</b>
+  <a href="#changelog">1. Changelog v4.0 → v4.2</a>
+  <a href="#root">2. Root cause WD -2147213312</a>
+  <a href="#flow">3. Flujo v4.2</a>
+  <a href="#apps">4. Matriz apps</a>
+  <a href="#cmds">5. Comandos</a>
+  <a href="#trouble">6. Troubleshooting</a>
+  <a href="#intune">7. Intune / Autopilot</a>
+  <a href="#files">8. Archivos</a>
+</div>
+
+<h2 id="changelog">1. Changelog v4.0 → v4.2</h2>
+
+<table>
+<thead><tr><th>Version</th><th>Fix</th><th>Detalle</th></tr></thead>
+<tbody>
+<tr><td><span class="pill p-info">4.0.0</span></td><td>Office bloqueante en Grupo 4</td><td>Cortex XDR reordenado a Grupo 6 (anti behavioral block). Handler installshield-imanage con sintaxis docs <code>/s setup.iss</code>.</td></tr>
+<tr><td><span class="pill p-info">4.1.0</span></td><td><b>Office BACKGROUND paralelo</b></td><td>Office (Grupo 4) lanzado al inicio en background via <code>Start-Process -PassThru</code>. Grupos 1-3 corren en paralelo. Wait antes Grupo 5. Flag <code>-SequentialOffice</code> revierte.</td></tr>
+<tr><td><span class="pill p-new">4.2.0</span></td><td><b>Diagnostico WD -2147213312 RESUELTO</b></td><td>Causa raiz: iManage Work Desktop 10.9.x requiere Word presente (no solo Outlook). XML Office por defecto cambiado a Word+Excel+PPT+Outlook. Detect cambiado a WINWORD.EXE. Gate WD endurecido con check explicito Word + Agent Services prereq.</td></tr>
+</tbody>
+</table>
+
+<h2 id="root">2. Root cause iManage Work Desktop exit <code>-2147213312</code> (0x80042000)</h2>
+
+<div class="card" style="border-color:#5a1010">
+<h3 style="color:#ff8080;margin-top:0">El bug real (confirmado v4.2)</h3>
+<p>iManage Work Desktop 10.9.4.39 es un <b>InstallShield Setup Player V29</b> con InstallScript que ejecuta pre-checks ANTES de mostrar UI. Si cualquier prereq falla, el script aborta con HRESULT <code>0x80042000</code> ("Aborted by user" silencioso). El IS engine setup.log siempre dice <code>ResultCode=0</code> (porque dialogs aceptados), pero el InstallScript abort retorna -2147213312.</p>
+
+<p>Diagnostico real obtenido habilitando <code>HKLM:\SOFTWARE\InstallShield\29.0\Professional\DoVerboseLogging=1</code> y leyendo <code>%TEMP%\workdesktop_v109_*.log</code> (log propio de iManage):</p>
+
+<pre>
+### ERROR ###  Work Desktop install did not detect iManage Agent Services
+                is installed. Please address and install again.
+
+### ERROR ###  Work Desktop install did not detect MS Office is installed.
+                Please address and install again.
+</pre>
+
+<p>Es decir, dos prereqs hard:</p>
+<ol>
+  <li><b>iManage Agent Services</b> preinstalado (mismo bundle, ejecutable propio <code>iManageAgentServices.exe</code>).</li>
+  <li><b>Microsoft Office con Word presente</b> — Outlook solo NO basta. WD detecta Office via MsiQueryProductState + ClickToRun virtual reg que requiere Word/Excel registrados.</li>
+</ol>
+
+<p>El XML <code>configuration.xml</code> original excluia Word/Excel/PowerPoint (perfil "Outlook only" ~600MB). Con ese perfil, WD aborta silenciosamente. Solucion: XML por defecto ahora incluye Word+Excel+PPT+Outlook (~1.5GB descarga).</p>
+
+<h3 style="margin-top:14px">Hipotesis descartadas en sesion 1</h3>
+<ul class="lean">
+  <li><span class="fail">FALSO:</span> Pending-reboot bloquea. Test post-reboot real: signals limpios, mismo -2147213312.</li>
+  <li><span class="fail">FALSO:</span> Defender behavioral monitoring. Anadidas exclusiones path + process: mismo exit code.</li>
+  <li><span class="fail">FALSO:</span> Conflicto Agent Services standalone vs bundle. Uninstall + retry: mismo error.</li>
+  <li><span class="fail">FALSO:</span> Office bg paralelo con iManage. Test post-Office-completo serial: mismo error si falta Word.</li>
+  <li><span class="fail">FALSO:</span> Fake registry keys Word/Excel InstallRoot. WD usa MsiQueryProductState, no simple reg key check.</li>
+</ul>
+</div>
+
+<h3>Los fixes en v4.2</h3>
+<table>
+<thead><tr><th>#</th><th>Fix</th><th>Implementacion</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>configuration.xml Office completo</td><td>Word+Excel+PowerPoint+Outlook. Excluye solo Access/OneNote/Publisher/Teams/OneDrive/Groove/Lync/Bing. Backup XML viejo en <code>configuration_OutlookOnly.xml.bak</code>.</td></tr>
+<tr><td>2</td><td>Detect Office cambiado a WINWORD.EXE</td><td>Mejor proxy de "Office completo" que OUTLOOK.EXE (que puede instalarse standalone).</td></tr>
+<tr><td>3</td><td>Gate WD endurecido</td><td>Verifica explicito OUTLOOK.EXE + WINWORD.EXE + Agent Services antes de lanzar install. Si falta cualquiera -> fail con error claro (no -2147213312 silencioso).</td></tr>
+<tr><td>4</td><td>Smart bootstrap detection ajustado</td><td>OutlookClassic.exe bootstrap solo si Word presente AND Outlook ausente. Antes era cualquier app Office.</td></tr>
+<tr><td>5</td><td>Office BACKGROUND paralelo (v4.1)</td><td>Office Grupo 4 lanzado <code>Start-Process -PassThru</code> al inicio. Grupos 1-3 corren en paralelo. Wait antes Grupo 5.</td></tr>
+<tr><td>6</td><td>Handler installshield-imanage</td><td>Sintaxis docs <code>/s setup.iss</code> positional. Path corto sin espacios. setup.iss bundled extraido del propio wrapper.</td></tr>
+<tr><td>7</td><td>Hex cast fix linea ~847</td><td><code>[int64] -band 0xFFFFFFFFL</code> + try/catch para exit codes negativos sin crash.</td></tr>
+<tr><td>8</td><td>MDR Cortex XDR Grupo 6</td><td>Ultimo grupo. Evita behavioral block del IS runtime iManage.</td></tr>
+</tbody>
+</table>
+
+<h2 id="flow">3. Flujo v4.2 — Office bg + grupos en serie</h2>
+
+<pre>
+[1] PRE-CHECKS
+    +-- Admin? PSh 5.1+?
+    +-- Disco libre > 8GB?
+    +-- Pending reboot?
+    +-- 15 archivos installer + Office XML presentes?
+
+[2] OFFICE BACKGROUND KICKOFF (si no esta instalado / no -SequentialOffice)
+    Start-Process OfficeSetup.exe /configure configuration.xml -PassThru
+    -> PID guardado. Continua sin esperar.
+
+[3] PHASE=full -> Grupos 1,2,3 EN PARALELO con Office bg
+
+    GRUPO 1 (MSIs serial · ~2 min)
+       AnyDesk · AqNet · Nebula CertAgent · ESET Mgmt Agent
+       msiexec.exe /i &lt;msi&gt; /qn /norestart /l*v &lt;log&gt; [extra]
+
+    GRUPO 2 (EXE silent serial · ~3 min)
+       Google Chrome · Autofirma · Bit4id Middleware
+       &lt;exe&gt; /silent | /S
+
+    GRUPO 3 (Complex serial · ~7 min)
+       PDFelement Business (Inno · 571 MB)
+       MitelConnect       (InstallShield · 151 MB)
+
+[4] WAIT Office background ANTES de Grupo 5
+    Complete-OfficeBackground: poll proc.HasExited, validate WINWORD.EXE
+    Timeout 40 min. Si bootstrap exit 0 sin Word: poll C2R service.
+
+[5] GRUPO 5 (iManage stack · requiere Office completo + AS · ~3 min)
+       iManageAgentServices.exe                    /quiet /norestart
+       iManageDriveSetup.exe                       /quiet /norestart /log
+       iManageDriveNative.exe                      /quiet /norestart /log
+       iManageWorkDesktopforWindowsx64.exe         /s setup.iss
+                  (extract /s /extract_all primero, run desde extractDir)
+
+[6] GRUPO 6 (AV behavioral · post-iManage)
+       MDR Cortex XDR  /qn /norestart REBOOT=ReallySuppress
+
+[7] VALIDATE -> smoke tests
+    +-- Registry Uninstall keys
+    +-- Servicios Windows (state + StartType)
+    +-- Binarios en disco (Test-Path + version)
+    +-- Outlook iManage COM addins (HKLM\Software\Microsoft\Office\Outlook\Addins)
+
+[8] REPORT FINAL
+    +-- POSTVALIDATE_REPORT.md  (tabla per-app)
+    +-- Validate_Report.md      (smoke tests)
+    +-- logs\Deploy_*.log + msi_*.log + is_*.log + burn_*.log
+</pre>
+
+<h2 id="apps">4. Matriz de aplicaciones (15)</h2>
+
+<table>
+<thead><tr>
+<th>Grupo</th><th>App</th><th>Version</th><th>Tech</th><th>Argumentos silent</th><th>Validacion</th>
+</tr></thead>
+<tbody>
+<tr><td>1</td><td><b>AnyDesk</b></td><td>7.0.15</td><td>MSI</td><td><code>/qn /norestart /l*v</code></td><td>reg + svc:AnyDesk + file</td></tr>
+<tr><td>1</td><td><b>AqNet</b></td><td>4.7.2</td><td>MSI</td><td><code>/qn /norestart /l*v</code></td><td>reg:AqNet</td></tr>
+<tr><td>1</td><td><b>Nebula CertAgent</b></td><td>5.0.0</td><td>MSI</td><td><code>/qn /norestart /l*v</code></td><td>reg + svc:nebulaCERTagent</td></tr>
+<tr><td>1</td><td><b>ESET Management Agent</b></td><td>13.1.1110</td><td>MSI + INI</td><td><code>/qn + P_HOSTNAME, P_CERT_CONTENT, P_INSTALL_MODE=1, ...</code></td><td>reg + svc:EraAgentSvc + ERAAgent.exe</td></tr>
+<tr><td>2</td><td><b>Google Chrome</b></td><td>online stub</td><td>EXE bootstrap</td><td><code>/silent /install</code></td><td>reg + chrome.exe</td></tr>
+<tr><td>2</td><td><b>Autofirma</b></td><td>1.9 (x64)</td><td>NSIS</td><td><code>/S</code></td><td>reg + AutoFirma.exe</td></tr>
+<tr><td>2</td><td><b>Bit4id Middleware</b></td><td>varia</td><td>NSIS</td><td><code>/S</code></td><td>reg + bit4xpki.exe</td></tr>
+<tr><td>3</td><td><b>PDFelement Business</b></td><td>10.1.5</td><td>Inno Setup</td><td><code>/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOCANCEL</code></td><td>reg + PDFelement.exe</td></tr>
+<tr><td>3</td><td><b>MitelConnect</b></td><td>varia</td><td>InstallShield</td><td><code>/s /SMS /v"/qn /l*v ... REBOOT=ReallySuppress"</code></td><td>reg + ConnectAgent.exe</td></tr>
+<tr><td>4 <span class="pill p-new">bg</span></td><td><b>Microsoft 365 Apps</b></td><td>C2R Current</td><td>Office C2R</td><td><code>/configure configuration.xml</code></td><td>WINWORD.EXE</td></tr>
+<tr><td>5</td><td><b>iManage Agent Services</b></td><td>109.0.23</td><td>WiX Burn</td><td><code>/quiet /norestart</code></td><td>reg:iManage Agent</td></tr>
+<tr><td>5</td><td><b>iManage Drive</b></td><td>10.10.0.410</td><td>WiX Burn</td><td><code>/quiet /norestart /log</code></td><td>reg + iManageDrive.exe</td></tr>
+<tr><td>5</td><td><b>iManage Drive Native</b></td><td>106.1.15</td><td>WiX Burn</td><td><code>/quiet /norestart /log</code></td><td>reg:iManage Drive Native</td></tr>
+<tr><td>5</td><td><b>iManage Work Desktop</b> <span class="pill p-hot">CRITICO</span></td><td>109.4.39</td><td>IS Setup Player V29</td><td><code>/s setup.iss</code> (extract+run desde dir corto)</td><td>reg:iManage Work Desktop for Windows x64</td></tr>
+<tr><td>6</td><td><b>MDR Cortex XDR</b></td><td>8.2</td><td>MSI</td><td><code>/qn /norestart /l*v REBOOT=ReallySuppress</code></td><td>reg + svc:cyserver</td></tr>
+</tbody>
+</table>
+
+<h2 id="cmds">5. Comandos desatendidos</h2>
+
+<div class="grid2">
+<div>
+<h3>USB / interactive</h3>
+<pre>
+# Doble clic .bat
+NodeDeploy_Run\PRO\Deploy.bat
+
+# CMD admin
+cd C:\path\NodeDeploy_Run\PRO
+Deploy.bat full
+
+# Solo validar (sin instalar)
+Deploy.bat validate
+
+# Solo probe (verifica archivos, no instala)
+Deploy.bat probe
+
+# Reanudar tras reboot
+Deploy.bat resume
+
+# Cleanup iManage residuales
+Deploy.bat cleanup
+</pre>
+</div>
+<div>
+<h3>PowerShell directo (Intune / Win32App)</h3>
+<pre>
+# Full deploy
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File Deploy.ps1 -Phase full
+
+# Office sequential (sin background)
+powershell -File Deploy.ps1 -Phase full -SequentialOffice
+
+# Skip Office (test rapido)
+powershell -File Deploy.ps1 -Phase full -NoOffice
+
+# Skip apps especificas
+powershell -File Deploy.ps1 -Phase full `
+  -SkipApps 'PDFelement Business','Microsoft 365 Apps'
+
+# Force reinstall (ignora detect cache)
+powershell -File Deploy.ps1 -Phase full -ForceReinstall
+
+# Source + State custom (Intune)
+powershell -File Deploy.ps1 -Phase install `
+  -Source 'C:\Intune\NodeDeploy\1.Node_Preparation' `
+  -StatePath 'C:\ProgramData\NodeDeploy\state'
+</pre>
+</div>
+</div>
+
+<h3>Exit codes</h3>
+<table>
+<thead><tr><th>Code</th><th>Significado</th><th>Accion</th></tr></thead>
+<tbody>
+<tr><td><code>0</code></td><td><span class="ok">SUCCESS</span></td><td>Todo OK. Reiniciar opcional.</td></tr>
+<tr><td><code>1</code></td><td><span class="warn">PARTIAL</span></td><td>Revisa <code>POSTVALIDATE_REPORT.md</code>; relanza con <code>resume</code>.</td></tr>
+<tr><td><code>2</code></td><td><span class="fail">CONFIG ERROR</span></td><td>Verifica que <code>1.Node_Preparation\</code> existe.</td></tr>
+<tr><td><code>3</code></td><td><span class="warn">REBOOT REQUIRED</span></td><td>Reinicia + ejecuta <code>Deploy.bat resume</code>.</td></tr>
+<tr><td><code>4</code></td><td><span class="fail">ADMIN REQUIRED</span></td><td>Lanza .bat como administrador.</td></tr>
+<tr><td><code>5</code></td><td><span class="fail">PREREQ MISSING</span></td><td>PowerShell &lt;5.1 — actualiza.</td></tr>
+<tr><td><code>99</code></td><td><span class="fail">PHASE INVALIDA</span></td><td>Usa: full|probe|install|validate|resume|cleanup.</td></tr>
+</tbody>
+</table>
+
+<h2 id="trouble">6. Troubleshooting</h2>
+
+<h3>iManage Work Desktop exit -2147213312 (CRITICO — v4.2 RESUELTO)</h3>
+<ol>
+  <li>Verifica Office completo (no solo Outlook):<br>
+    <code>Test-Path 'C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE'</code><br>
+    Si <code>False</code>: <code>configuration.xml</code> esta excluyendo Word — usa la version v4.2 default (Word+Excel+PPT+Outlook), NO la backup OutlookOnly.
+  </li>
+  <li>Verifica iManage Agent Services instalado:<br>
+    <code>Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' | ? DisplayName -eq 'iManage Agent Services'</code><br>
+    Si vacio: lanza solo <code>iManageAgentServices.exe /quiet</code> primero.
+  </li>
+  <li>Habilita IS verbose logging (revela log iManage propio):<br>
+    <pre>reg add "HKLM\SOFTWARE\InstallShield\29.0\Professional" /v DoVerboseLogging /t REG_DWORD /d 1 /f</pre>
+    Logs iManage en <code>%TEMP%\workdesktop_v109_*.log</code>.
+  </li>
+  <li>Cierra Office + ClickToRun + iManage procs:<br>
+    <code>taskkill /F /IM OUTLOOK.EXE /IM WINWORD.EXE /IM EXCEL.EXE /IM POWERPNT.EXE /IM OfficeClickToRun.exe /IM iManageStayExec.exe</code>
+  </li>
+  <li><code>Deploy.bat cleanup</code> — mata procesos iManage residuales.</li>
+  <li><code>Deploy.bat resume</code> — reintenta.</li>
+</ol>
+
+<h3>Office C2R timeout</h3>
+<p>Default 40 min (2400s). Si tu red es lenta (&lt;2 Mbps): editar <code>Deploy.ps1</code> <code>Timeout=2400</code> -> aumenta.</p>
+
+<h3>Sin acceso a internet</h3>
+<ul class="lean">
+<li>Chrome: usa MSI corporativo offline — sustituye <code>ChromeSetup.exe</code> por el MSI.</li>
+<li>Office: ODT pre-cacheado en local (configurar <code>SourcePath</code> en configuration.xml).</li>
+</ul>
+
+<h3>Bloqueo de AV/EDR (Cortex XDR / ESET)</h3>
+<p>Cortex XDR esta en Grupo 6 por diseno (post-iManage). Si ESET bloquea:</p>
+<ul class="lean">
+<li><code>-SkipApps ESET Management Agent</code> primer run.</li>
+<li>Resto se instala.</li>
+<li>Snapshot.</li>
+<li>Segundo run solo ESET.</li>
+</ul>
+
+<h2 id="intune">7. Intune / Autopilot — DESPLIEGUE PRODUCTIVO</h2>
+
+<h3>Opcion A: Win32App unico (suite bundle) <span class="pill p-info">RECOMENDADO PARA EMPEZAR</span></h3>
+
+<p>Empaqueta toda la carpeta <code>nodedeploy\</code> como un solo .intunewin. Una unica app en Intune, una instalacion atomica.</p>
+
+<pre>
+# 1) Descargar Microsoft Win32 Content Prep Tool
+#    https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool
+
+# 2) Empaquetar (la carpeta source debe ser la raiz "nodedeploy")
+IntuneWinAppUtil.exe `
+  -c "C:\path\nodedeploy" `
+  -s "NodeDeploy_Run\PRO\Deploy.bat" `
+  -o "C:\Intune\Output" `
+  -q
+
+# 3) Subir nodedeploy.intunewin a Intune Apps blade -> Win32 app
+</pre>
+
+<h4>Configuracion en Intune Apps blade:</h4>
+<table>
+<tbody>
+<tr><th>App Information</th><td>Name: <code>NodeDeploy PRO v4.2 — Stack 15 apps</code> · Publisher: <code>Andersen IT</code></td></tr>
+<tr><th>Install command</th><td><code>NodeDeploy_Run\PRO\Deploy.bat full</code></td></tr>
+<tr><th>Uninstall command</th><td><code>powershell.exe -NoProfile -ExecutionPolicy Bypass -File NodeDeploy_Run\PRO\Uninstall.ps1 -ConfirmReset</code></td></tr>
+<tr><th>Install behavior</th><td>System</td></tr>
+<tr><th>Device restart behavior</th><td>App install may force a device restart</td></tr>
+<tr><th>Return codes</th><td><code>0=Success · 1=Failed · 3=SoftReboot · 1707=Success · 3010=HardReboot</code></td></tr>
+<tr><th>Detection rule</th><td>Manually configure detection rules · Rule: <code>Registry · HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\iManageWorkDesktopForWindows · Value DisplayVersion · Exists</code></td></tr>
+<tr><th>Requirements</th><td>OS: Windows 10 1809+ · Arch: x64 · Disk: 15 GB free · RAM: 4 GB</td></tr>
+<tr><th>Assignment</th><td>Required · Grupo AAD <code>Andersen-NodeDeploy-Target</code></td></tr>
+</tbody>
+</table>
+
+<h3>Opcion B: Suite de Win32Apps individuales con dependencias</h3>
+
+<p>Cada app como Win32App separado con detection rule especifica + dependency tree. Ventaja: retry independiente per-app, Intune respeta orden automaticamente.</p>
+
+<table>
+<thead><tr><th>App</th><th>Install command</th><th>Detection rule</th><th>Dependencies</th></tr></thead>
+<tbody>
+<tr><td>AnyDesk</td><td><code>msiexec /i AnyDesk.msi /qn /norestart</code></td><td>File <code>%ProgramFiles%\AnyDesk\AnyDesk.exe</code></td><td>-</td></tr>
+<tr><td>AqNet</td><td><code>msiexec /i AqNetInstalacion.msi /qn /norestart</code></td><td>Reg <code>Uninstall\* DisplayName like 'AqNet*'</code></td><td>-</td></tr>
+<tr><td>Nebula CertAgent</td><td><code>msiexec /i nebula-certAgent-winx64-5.0.0.msi /qn</code></td><td>Service <code>nebulaCERTagent</code></td><td>-</td></tr>
+<tr><td>ESET Mgmt Agent</td><td><code>msiexec /i eset_msi.msi /qn P_INSTALL_MODE=1 ... (props from INI)</code></td><td>Service <code>EraAgentSvc</code></td><td>-</td></tr>
+<tr><td>Chrome</td><td><code>ChromeSetup.exe /silent /install</code></td><td>File <code>chrome.exe</code></td><td>-</td></tr>
+<tr><td>Autofirma</td><td><code>Autofirma_64_v1_9_installer.exe /S</code></td><td>File <code>AutoFirma.exe</code></td><td>-</td></tr>
+<tr><td>Bit4id MW</td><td><code>Bit4id_Middleware.exe /S</code></td><td>File <code>bit4xpki.exe</code></td><td>-</td></tr>
+<tr><td>PDFelement</td><td><code>pdfelement_business-15066_10.1.5.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-</code></td><td>File <code>PDFelement.exe</code></td><td>-</td></tr>
+<tr><td>MitelConnect</td><td><code>MitelConnect.exe /s /v"/qn REBOOT=ReallySuppress"</code></td><td>File <code>ConnectAgent.exe</code></td><td>-</td></tr>
+<tr><td>Microsoft 365 Apps</td><td><code>OfficeSetup.exe /configure configuration.xml</code></td><td>File <code>WINWORD.EXE</code></td><td>-</td></tr>
+<tr><td>iManage Agent Services</td><td><code>iManageAgentServices.exe /quiet /norestart</code></td><td>Reg <code>iManage Agent Services</code></td><td>Microsoft 365 Apps</td></tr>
+<tr><td>iManage Drive</td><td><code>iManageDriveSetup.exe /quiet /norestart</code></td><td>File <code>iManageDrive.exe</code></td><td>iManage Agent Services</td></tr>
+<tr><td>iManage Drive Native</td><td><code>iManageDriveNative.exe /quiet /norestart</code></td><td>Reg <code>iManage Drive Native</code></td><td>iManage Drive</td></tr>
+<tr><td>iManage Work Desktop <span class="pill p-hot">CRIT</span></td><td>Custom PS1 (extract setup.iss + run /s)</td><td>Reg <code>iManageWorkDesktopForWindows</code></td><td>Microsoft 365 Apps + iManage Agent Services</td></tr>
+<tr><td>MDR Cortex XDR</td><td><code>msiexec /i MDR_Windows_Andersen_8_2_x64.msi /qn REBOOT=ReallySuppress</code></td><td>Service <code>cyserver</code></td><td>iManage Work Desktop (post)</td></tr>
+</tbody>
+</table>
+
+<h3>Wrapper PowerShell para iManage Work Desktop (Win32App individual)</h3>
+<pre>
+# Install_iManageWorkDesktop.ps1 — wrapper Intune-friendly
+$ErrorActionPreference = 'Stop'
+$wrapper = Join-Path $PSScriptRoot 'iManageWorkDesktopforWindowsx64.exe'
+$tmp     = Join-Path $env:TEMP "imWD_$(Get-Random)"
+New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+Copy-Item $wrapper "$tmp\w.exe"
+
+# Extract bundled setup.iss
+& "$tmp\w.exe" /s /extract_all:"$tmp\ext"
+Start-Sleep -Seconds 5
+$iss = Get-ChildItem "$tmp\ext\Disk1\setup.iss" -ErrorAction Stop
+Copy-Item $iss.FullName "$tmp\setup.iss"
+
+# Run silent install desde dir corto
+Push-Location $tmp
+$p = Start-Process -FilePath "$tmp\w.exe" `
+    -ArgumentList '/s','/f1"setup.iss"','/f2"setup.log"' `
+    -Wait -PassThru -NoNewWindow
+Pop-Location
+
+if ($p.ExitCode -ne 0) {
+    Write-Error "WD install exit $($p.ExitCode). Check %TEMP%\workdesktop_v109_*.log"
+    exit $p.ExitCode
+}
+exit 0
+</pre>
+
+<h3>Autopilot ESP</h3>
+<ol>
+  <li>Importar HW hash del equipo a Intune Autopilot.</li>
+  <li>Asignar a grupo AAD con perfil Autopilot configurado.</li>
+  <li>Configurar ESP (Enrollment Status Page) con "Block device use until required apps installed".</li>
+  <li>Anadir los 15 Win32Apps (o el bundle unico) a "Required Apps" del ESP.</li>
+  <li>Equipo arranca -> OOBE -> Autopilot enrolment -> ESP instala apps -> escritorio listo.</li>
+</ol>
+
+<h2 id="files">8. Archivos del proyecto</h2>
+
+<table>
+<thead><tr><th>Archivo</th><th>Proposito</th></tr></thead>
+<tbody>
+<tr><td><code>NodeDeploy_Run\PRO\Deploy.bat</code></td><td><b>Launcher</b>. UAC auto-elevate, routing fases, exit code claro.</td></tr>
+<tr><td><code>NodeDeploy_Run\PRO\Deploy.ps1</code></td><td>Engine PowerShell v4.2. Office bg + gate WD endurecido + smart detect.</td></tr>
+<tr><td><code>NodeDeploy_Run\PRO\Validate.ps1</code></td><td>Smoke tests post-instalacion con Outlook addin check.</td></tr>
+<tr><td><code>NodeDeploy_Run\PRO\Uninstall.ps1</code></td><td>Reset desinstalacion (uso: <code>-ConfirmReset</code>).</td></tr>
+<tr><td><code>NodeDeploy_Run\PRO\README.md</code></td><td>Documentacion operativa.</td></tr>
+<tr><td><code>NodeDeploy_Run\PRO\NodeDeploy_v4.html</code></td><td>Este dashboard.</td></tr>
+<tr><td><code>NodeDeploy_Run\state\nodedeploy_state.json</code></td><td>Estado persistente (resume tras reboot).</td></tr>
+<tr><td><code>NodeDeploy_Run\state\logs\Deploy_*.log</code></td><td>Log maestro per-sesion, timestamped.</td></tr>
+<tr><td><code>NodeDeploy_Run\state\logs\msi_*.log</code></td><td>MSI verbose por instalador MSI.</td></tr>
+<tr><td><code>NodeDeploy_Run\state\logs\is_*.log</code></td><td>InstallShield wrapper MSI verbose.</td></tr>
+<tr><td><code>NodeDeploy_Run\state\logs\burn_*.log</code></td><td>WiX Burn log (iManage Drive).</td></tr>
+<tr><td><code>NodeDeploy_Run\POSTVALIDATE_REPORT.md</code></td><td>Reporte final tras Deploy con tabla per-app.</td></tr>
+<tr><td><code>NodeDeploy_Run\Validate_Report.md</code></td><td>Reporte smoke tests.</td></tr>
+<tr><td><code>1.Node_Preparation\</code></td><td>Carpeta source con 15 instaladores + Office XML.</td></tr>
+<tr><td><code>1.Node_Preparation\install_config.ini</code></td><td>Config ESET PROTECT Cloud (token preactivado).</td></tr>
+<tr><td><code>1.Node_Preparation\Sc3.0\configuration.xml</code></td><td><b>v4.2 Office C2R: Word+Excel+PPT+Outlook (NO solo Outlook).</b></td></tr>
+<tr><td><code>1.Node_Preparation\Sc3.0\configuration_OutlookOnly.xml.bak</code></td><td>Backup XML viejo (NO compatible con iManage Work Desktop).</td></tr>
+<tr><td><code>1.Node_Preparation\Sc3.0\addOfficeApps.xml</code></td><td>XML para anadir Word/Excel/PPT a baseline Outlook-only existente.</td></tr>
+</tbody>
+</table>
+
+<hr>
+
+<div class="meta">
+  <b>NodeDeploy PRO v4.2.0</b> · Generado 2026-05-28 · iManage Work Desktop -2147213312 root cause diagnosticado y corregido (Word prereq).
+</div>
+
+</body>
+</html>

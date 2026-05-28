@@ -1,0 +1,316 @@
+﻿{
+    "session_id":  "f292b71b",
+    "started":  "2026-05-28T17:15:48.4797916+02:00",
+    "last_updated":  "2026-05-28T17:33:11.8202545+02:00",
+    "source":  "C:\\Users\\user\\Desktop\\nodedeploy\\1.Node_Preparation",
+    "state_path":  "C:\\Users\\user\\Desktop\\nodedeploy\\NodeDeploy_Run\\state",
+    "version":  "4.2.3",
+    "reboot_required":  false,
+    "apps":  {
+                 "iManage Work Desktop":  {
+                                              "name":  "iManage Work Desktop",
+                                              "type":  "installshield-imanage",
+                                              "status":  "ok",
+                                              "attempts":  1,
+                                              "exit_code":  0,
+                                              "elapsed_sec":  60,
+                                              "started":  "2026-05-28T17:32:08.0528853+02:00",
+                                              "finished":  "2026-05-28T17:33:11.7560948+02:00",
+                                              "args_used":  "\"C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\imWork_c87053\\iManageWorkDesktopforWindowsx64.exe\" /s setup.iss",
+                                              "install_log":  "D:\\nodedeploy3\\NodeDeploy_Run\\state\\logs\\is_iManageWorkDesktop_20260528_173210.log",
+                                              "evidence":  [
+                                                               "registry:iManage Work Desktop for Windows x64 v109.4.39"
+                                                           ],
+                                              "errors":  [
+                                                             "reboot_pending:HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending|PendingFileRenameOperations"
+                                                         ],
+                                              "validated":  true,
+                                              "timed_out":  false
+                                          },
+                 "Microsoft 365 Apps":  {
+                                            "name":  "Microsoft 365 Apps",
+                                            "type":  "office",
+                                            "status":  "ok",
+                                            "attempts":  0,
+                                            "exit_code":  null,
+                                            "elapsed_sec":  0,
+                                            "started":  "2026-05-28T17:15:49.9183898+02:00",
+                                            "finished":  "2026-05-28T17:32:01.2586996+02:00",
+                                            "args_used":  "",
+                                            "install_log":  "",
+                                            "evidence":  [
+                                                             "file:WINWORD.EXE",
+                                                             "file:OUTLOOK.EXE"
+                                                         ],
+                                            "errors":  [
+
+                                                       ],
+                                            "validated":  true,
+                                            "timed_out":  false
+                                        },
+                 "AqNet":  {
+                               "name":  "AqNet",
+                               "type":  "msi",
+                               "status":  "ok",
+                               "attempts":  0,
+                               "exit_code":  null,
+                               "elapsed_sec":  0,
+                               "started":  "2026-05-28T17:15:49.6134788+02:00",
+                               "finished":  "2026-05-28T17:32:00.7567875+02:00",
+                               "args_used":  "",
+                               "install_log":  "",
+                               "evidence":  [
+                                                "registry:AqNet v4.7.2"
+                                            ],
+                               "errors":  [
+
+                                          ],
+                               "validated":  true,
+                               "timed_out":  false
+                           },
+                 "AnyDesk":  {
+                                 "name":  "AnyDesk",
+                                 "type":  "msi",
+                                 "status":  "ok",
+                                 "attempts":  0,
+                                 "exit_code":  null,
+                                 "elapsed_sec":  0,
+                                 "started":  "2026-05-28T17:15:49.5922326+02:00",
+                                 "finished":  "2026-05-28T17:32:00.6949523+02:00",
+                                 "args_used":  "",
+                                 "install_log":  "",
+                                 "evidence":  [
+                                                  "registry:AnyDesk AnyDesk v7.0.15"
+                                              ],
+                                 "errors":  [
+
+                                            ],
+                                 "validated":  true,
+                                 "timed_out":  false
+                             },
+                 "PDFelement Business":  {
+                                             "name":  "PDFelement Business",
+                                             "type":  "exe",
+                                             "status":  "ok",
+                                             "attempts":  0,
+                                             "exit_code":  null,
+                                             "elapsed_sec":  0,
+                                             "started":  "2026-05-28T17:15:49.8440260+02:00",
+                                             "finished":  "2026-05-28T17:32:01.2253841+02:00",
+                                             "args_used":  "",
+                                             "install_log":  "",
+                                             "evidence":  [
+                                                              "registry:Wondershare PDFelement Business ( Version 10.1.5 ) v10.1.5"
+                                                          ],
+                                             "errors":  [
+
+                                                        ],
+                                             "validated":  true,
+                                             "timed_out":  false
+                                         },
+                 "Bit4id Middleware":  {
+                                           "name":  "Bit4id Middleware",
+                                           "type":  "exe",
+                                           "status":  "ok",
+                                           "attempts":  0,
+                                           "exit_code":  null,
+                                           "elapsed_sec":  0,
+                                           "started":  "2026-05-28T17:15:49.7662583+02:00",
+                                           "finished":  "2026-05-28T17:32:01.0368201+02:00",
+                                           "args_used":  "",
+                                           "install_log":  "",
+                                           "evidence":  [
+                                                            "registry:Bit4id - Universal MW 1.4.10.821 v1.4.10.821"
+                                                        ],
+                                           "errors":  [
+
+                                                      ],
+                                           "validated":  true,
+                                           "timed_out":  false
+                                       },
+                 "Google Chrome":  {
+                                       "name":  "Google Chrome",
+                                       "type":  "exe",
+                                       "status":  "ok",
+                                       "attempts":  0,
+                                       "exit_code":  null,
+                                       "elapsed_sec":  0,
+                                       "started":  "2026-05-28T17:15:49.7819329+02:00",
+                                       "finished":  "2026-05-28T17:32:01.1155091+02:00",
+                                       "args_used":  "",
+                                       "install_log":  "",
+                                       "evidence":  [
+                                                        "registry:Google Chrome v148.0.7778.217",
+                                                        "file:chrome.exe"
+                                                    ],
+                                       "errors":  [
+
+                                                  ],
+                                       "validated":  true,
+                                       "timed_out":  false
+                                   },
+                 "ESET Management Agent":  {
+                                               "name":  "ESET Management Agent",
+                                               "type":  "msi-eset",
+                                               "status":  "ok",
+                                               "attempts":  0,
+                                               "exit_code":  null,
+                                               "elapsed_sec":  0,
+                                               "started":  "2026-05-28T17:15:49.6277504+02:00",
+                                               "finished":  "2026-05-28T17:32:00.8298070+02:00",
+                                               "args_used":  "",
+                                               "install_log":  "",
+                                               "evidence":  [
+                                                                "registry:ESET Management Agent v13.1.1110.0",
+                                                                "service:EraAgentSvc(Running)",
+                                                                "file:ERAAgent.exe"
+                                                            ],
+                                               "errors":  [
+
+                                                          ],
+                                               "validated":  true,
+                                               "timed_out":  false
+                                           },
+                 "iManage Drive Native":  {
+                                              "name":  "iManage Drive Native",
+                                              "type":  "burn",
+                                              "status":  "ok",
+                                              "attempts":  0,
+                                              "exit_code":  null,
+                                              "elapsed_sec":  0,
+                                              "started":  "2026-05-28T17:15:49.9951110+02:00",
+                                              "finished":  "2026-05-28T17:32:01.4244561+02:00",
+                                              "args_used":  "",
+                                              "install_log":  "",
+                                              "evidence":  [
+                                                               "registry:iManage Drive Native v106.1.15"
+                                                           ],
+                                              "errors":  [
+
+                                                         ],
+                                              "validated":  true,
+                                              "timed_out":  false
+                                          },
+                 "Nebula CertAgent":  {
+                                          "name":  "Nebula CertAgent",
+                                          "type":  "msi",
+                                          "status":  "ok",
+                                          "attempts":  0,
+                                          "exit_code":  null,
+                                          "elapsed_sec":  0,
+                                          "started":  "2026-05-28T17:15:49.6392749+02:00",
+                                          "finished":  "2026-05-28T17:32:00.8779193+02:00",
+                                          "args_used":  "",
+                                          "install_log":  "",
+                                          "evidence":  [
+                                                           "registry:nebulaCERTagent v5.0.0.0"
+                                                       ],
+                                          "errors":  [
+
+                                                     ],
+                                          "validated":  true,
+                                          "timed_out":  false
+                                      },
+                 "Autofirma":  {
+                                   "name":  "Autofirma",
+                                   "type":  "exe",
+                                   "status":  "ok",
+                                   "attempts":  0,
+                                   "exit_code":  null,
+                                   "elapsed_sec":  0,
+                                   "started":  "2026-05-28T17:15:49.7443189+02:00",
+                                   "finished":  "2026-05-28T17:32:00.9581476+02:00",
+                                   "args_used":  "",
+                                   "install_log":  "",
+                                   "evidence":  [
+                                                    "registry:Autofirma v1.9"
+                                                ],
+                                   "errors":  [
+
+                                              ],
+                                   "validated":  true,
+                                   "timed_out":  false
+                               },
+                 "iManage Agent Services":  {
+                                                "name":  "iManage Agent Services",
+                                                "type":  "installshield",
+                                                "status":  "ok",
+                                                "attempts":  0,
+                                                "exit_code":  null,
+                                                "elapsed_sec":  0,
+                                                "started":  "2026-05-28T17:15:49.9617178+02:00",
+                                                "finished":  "2026-05-28T17:32:01.3196218+02:00",
+                                                "args_used":  "",
+                                                "install_log":  "",
+                                                "evidence":  [
+                                                                 "registry:iManage Agent Services v109.0.23"
+                                                             ],
+                                                "errors":  [
+
+                                                           ],
+                                                "validated":  true,
+                                                "timed_out":  false
+                                            },
+                 "iManage Drive":  {
+                                       "name":  "iManage Drive",
+                                       "type":  "burn",
+                                       "status":  "ok",
+                                       "attempts":  0,
+                                       "exit_code":  null,
+                                       "elapsed_sec":  0,
+                                       "started":  "2026-05-28T17:15:49.9733845+02:00",
+                                       "finished":  "2026-05-28T17:32:01.3670417+02:00",
+                                       "args_used":  "",
+                                       "install_log":  "",
+                                       "evidence":  [
+                                                        "registry:iManage Drive v10.10.0410"
+                                                    ],
+                                       "errors":  [
+
+                                                  ],
+                                       "validated":  true,
+                                       "timed_out":  false
+                                   },
+                 "MitelConnect":  {
+                                      "name":  "MitelConnect",
+                                      "type":  "installshield",
+                                      "status":  "ok",
+                                      "attempts":  0,
+                                      "exit_code":  null,
+                                      "elapsed_sec":  0,
+                                      "started":  "2026-05-28T17:15:49.8300118+02:00",
+                                      "finished":  "2026-05-28T17:32:01.1781835+02:00",
+                                      "args_used":  "",
+                                      "install_log":  "",
+                                      "evidence":  [
+                                                       "registry:Mitel Connect v213.100.3284.0"
+                                                   ],
+                                      "errors":  [
+
+                                                 ],
+                                      "validated":  true,
+                                      "timed_out":  false
+                                  },
+                 "MDR Cortex XDR":  {
+                                        "name":  "MDR Cortex XDR",
+                                        "type":  "msi",
+                                        "status":  "ok",
+                                        "attempts":  0,
+                                        "exit_code":  null,
+                                        "elapsed_sec":  0,
+                                        "started":  "2026-05-28T17:15:50.0482583+02:00",
+                                        "finished":  "2026-05-28T17:33:11.8202545+02:00",
+                                        "args_used":  "",
+                                        "install_log":  "",
+                                        "evidence":  [
+                                                         "registry:Cortex XDR 9.0.1.23153 v9.0.1.23153",
+                                                         "service:cyserver(Running)"
+                                                     ],
+                                        "errors":  [
+
+                                                   ],
+                                        "validated":  true,
+                                        "timed_out":  false
+                                    }
+             }
+}

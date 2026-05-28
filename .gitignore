@@ -1,0 +1,22 @@
+# Installers / binaries (no subir a GitHub: >100MB y no son código)
+*.exe
+*.msi
+*.msixbundle
+*.dat
+*.lf
+*.lnk
+*.cer
+*.bak
+
+# Logs / estado runtime
+*.log
+*.lock
+NodeDeploy_Run/state/logs/
+NodeDeploy_Run/state/reports/
+NodeDeploy_Run/state/*.log
+
+# Backups versionados de binarios
+*.old.*
+
+# Capturas
+*.png
