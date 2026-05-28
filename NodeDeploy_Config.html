@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>NodeDeploy v3.3 - Config Tecnica</title>
+<style>
+  :root {
+    --bg:#0d1117; --fg:#e6edf3; --mut:#8b949e; --accent:#58a6ff;
+    --ok:#3fb950; --warn:#d29922; --fail:#f85149; --card:#161b22;
+    --border:#30363d; --code:#1e2530;
+  }
+  * { box-sizing:border-box }
+  body { background:var(--bg); color:var(--fg); font-family:-apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:24px; line-height:1.45 }
+  h1 { color:var(--accent); margin:0 0 4px 0; font-size:22px }
+  h2 { color:var(--accent); margin:32px 0 8px 0; font-size:16px; border-bottom:1px solid var(--border); padding-bottom:4px }
+  h3 { color:#c9d1d9; margin:18px 0 6px 0; font-size:14px }
+  .sub { color:var(--mut); font-size:13px; margin-bottom:18px }
+  table { border-collapse:collapse; width:100%; font-size:12px; margin:8px 0 16px 0 }
+  th, td { border:1px solid var(--border); padding:6px 8px; vertical-align:top; text-align:left }
+  th { background:var(--card); color:var(--accent); font-weight:600 }
+  tr:nth-child(even) td { background:#10151b }
+  code, pre { font-family:Consolas,Monaco,monospace; font-size:11.5px }
+  code { background:var(--code); padding:1px 5px; border-radius:3px; color:#e1e4e8 }
+  pre { background:var(--code); padding:10px 12px; border-radius:5px; overflow-x:auto; border:1px solid var(--border); margin:6px 0 12px 0 }
+  .ok { color:var(--ok); font-weight:600 }
+  .warn { color:var(--warn); font-weight:600 }
+  .fail { color:var(--fail); font-weight:600 }
+  .pill { display:inline-block; padding:1px 7px; border-radius:10px; font-size:10.5px; font-weight:600 }
+  .p-ok { background:#0f4a1f; color:#7ee787 }
+  .p-warn { background:#5a3d10; color:#f0c674 }
+  .p-fail { background:#5a1010; color:#ff8080 }
+  .p-info { background:#1f3a5a; color:#79c0ff }
+  .meta { color:var(--mut); font-size:11.5px }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:12px 16px; margin:12px 0 }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px }
+  .small { font-size:11px; color:var(--mut) }
+  ul.lean { margin:4px 0 12px 18px; padding:0 }
+  ul.lean li { margin:2px 0 }
+  hr { border:none; border-top:1px solid var(--border); margin:18px 0 }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; margin-top:8px }
+</style>
+</head>
+<body>
+
+<h1>NodeDeploy v3.3 - Configuracion tecnica de despliegue desatendido</h1>
+<div class="sub">15 instaladores corporativos Andersen | Source UNC <code>\\192.168.2.8\utilidades\1.Node_Preparation</code> | Generado 2026-05-12</div>
+
+<div class="legend">
+  <span><span class="pill p-ok">OK</span> Validado</span>
+  <span><span class="pill p-warn">!</span> Necesita config externa</span>
+  <span><span class="pill p-info">i</span> Info</span>
+  <span><span class="pill p-fail">X</span> No compatible</span>
+</div>
+
+<h2>1. Matriz de instaladores</h2>
+
+<table>
+<thead><tr>
+<th>App</th><th>Archivo</th><th>Tech</th><th>Parametros silenciosos</th><th>Validacion</th><th>Status</th>
+</tr></thead>
+<tbody>
+
+<tr><td><b>AnyDesk</b><br><span class="meta">v7.0.15</span></td>
+<td><code>AnyDesk.msi</code></td><td>MSI</td>
+<td><code>msiexec /i AnyDesk.msi /qn /norestart /l*v &lt;log&gt;</code></td>
+<td>reg:AnyDesk + svc:AnyDesk + file:AnyDesk.exe</td>
+<td><span class="pill p-ok">OK</span></td></tr>
+
+<tr><td><b>AqNet</b><br><span class="meta">v4.7.2</span></td>
+<td><code>AqNetInstalacion.msi</code></td><td>MSI</td>
+<td><code>msiexec /i AqNetInstalacion.msi /qn /norestart /l*v &lt;log&gt;</code></td>
+<td>reg:AqNet</td>
+<td><span class="pill p-ok">OK</span></td></tr>
+
+<tr><td><b>Nebula CertAgent</b><br><span class="meta">v5.0.0 - Vintegris</span></td>
+<td><code>nebula-certAgent-winx64-5.0.0.msi</code></td><td>MSI</td>
+<td><code>msiexec /i &lt;msi&gt; /qn /norestart /l*v &lt;log&gt;</code></td>
+<td>reg:Nebula</td>
+<td><span class="pill p-ok">OK</span></td></tr>
+
+<tr><td><b>MDR / Cortex XDR</b><br><span class="meta">8.2.2.49708 - Palo Alto</span></td>
+<td><code>MDR_Windows_Andersen_8_2_x64.msi</code></td><td>MSI</td>
+<td><code>msiexec /i &lt;msi&gt; /qn /norestart /l*v &lt;log&gt; REBOOT=ReallySuppress</code></td>
+<td>reg:Cortex XDR + svc:cyserver(Running)</td>
+<td><span class="pill p-ok">OK</span></td></tr>
+
+<tr><td><b>ESET Management Agent</b><br><span class="meta">v13.1.1110 - cloud</span></td>
+<td><code>eset_msi.msi</code> + <code>install_config.ini</code></td><td>MSI</td>
+<td><code>msiexec /i eset_msi.msi /qn /norestart /l*v &lt;log&gt; P_HOSTNAME=&quot;...&quot; P_PORT=&quot;443&quot; P_CERT_CONTENT=&quot;&lt;base64 PFX&gt;&quot; P_CERT_AUTH_CONTENT=&quot;&lt;base64 CA&gt;&quot; P_CERT_PASSWORD_IS_BASE64=&quot;yes&quot; P_CERT_PASSWORD=&quot;&quot; P_INSTALL_MODE_EULA_ONLY=&quot;1&quot; P_ENABLE_TELEMETRY=&quot;1&quot;</code></td>
+<td>reg:ESET Management Agent + svc:EraAgentSvc + file:ERAAgent.exe</td>
+<td><span class="pill p-warn">!</span> requiere INI</td></tr>
+
+<tr><td><b>Google Chrome</b></td>
+<td><code>ChromeSetup.exe</code></td><td>Bootstrap stub</td>
+<td><code>ChromeSetup.exe /silent /install</code></td>
+<td>reg:Google Chrome + file:chrome.exe</td>
+<td><span class="pill p-ok">OK</span></td></tr>
+
+<tr><td><b>Autofirma</b><br><span class="meta">64 v1.9</span></td>
+<td><code>Autofirma_64_v1_9_installer.exe</code></td><td>NSIS</td>
+<td><code>Autofirma.exe /S</code></td>
+<td>reg:AutoFirma + file:AutoFirma.exe</td>
+<td><span class="pill p-ok">OK</span></td></tr>
+
+<tr><td><b>Bit4id Middleware</b></td>
+<td><code>Bit4id_Middleware.exe</code></td><td>NSIS</td>
+<td><code>Bit4id_Middleware.exe /S</code></td>
+<td>reg:Bit4id + file:bit4xpki.exe</td>
+<td><span class="pill p-ok">OK</span></td></tr>
+
+<tr><td><b>PDFelement Business</b><br><span class="meta">v10.1.5 - Wondershare</span></td>
+<td><code>pdfelement_business-15066_10.1.5.exe</code></td><td>Inno Setup</td>
+<td><code>pdfelement.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOCANCEL /NOCLOSEAPPLICATIONS /CLOSEAPPLICATIONS</code></td>
+<td>reg:PDFelement + file:PDFelement.exe</td>
+<td><span class="pill p-ok">OK</span></td></tr>
+
+<tr><td><b>MitelConnect</b></td>
+<td><code>MitelConnect.exe</code></td><td>InstallShield wrapper</td>
+<td><code>MitelConnect.exe /s /v"/qn REBOOT=ReallySuppress"</code></td>
+<td>reg:Mitel + file:ConnectAgent.exe</td>
+<td><span class="pill p-ok">OK</span></td></tr>
+
+<tr><td><b>Microsoft 365 Apps (Outlook Classic)</b></td>
+<td><code>OfficeSetup.exe</code> + <code>configuration.xml</code></td><td>Office C2R</td>
+<td><code>OfficeSetup.exe /configure configuration.xml</code></td>
+<td>reg:Microsoft 365 Apps + file:OUTLOOK.EXE</td>
+<td><span class="pill p-warn">!</span> requiere XML</td></tr>
+
+<tr><td><b>iManage Agent Services</b><br><span class="meta">10.9.4.39</span></td>
+<td><code>iManageAgentServices.exe</code></td><td>InstallShield</td>
+<td><code>iManageAgentServices.exe /s /SMS /v"/qn REBOOT=ReallySuppress"</code></td>
+<td>reg:iManage Agent</td>
+<td><span class="pill p-ok">OK</span></td></tr>
+
+<tr><td><b>iManage Drive</b><br><span class="meta">10.10.0.410</span></td>
+<td><code>iManageDriveSetup.exe</code></td><td>WiX Burn</td>
+<td><code>iManageDriveSetup.exe /quiet /norestart /log &lt;log&gt;</code></td>
+<td>reg:iManage Drive + file:iManageDrive.exe</td>
+<td><span class="pill p-ok">OK</span></td></tr>
+
+<tr><td><b>iManage Drive Native</b><br><span class="meta">10.6.1.15</span></td>
+<td><code>iManageDriveNative.exe</code></td><td>WiX Burn</td>
+<td><code>iManageDriveNative.exe /quiet /norestart /log &lt;log&gt;</code></td>
+<td>reg:iManage Drive Native</td>
+<td><span class="pill p-ok">OK</span></td></tr>
+
+<tr><td><b>iManage Work Desktop</b><br><span class="meta">10.9.4.39</span></td>
+<td><code>iManageWorkDesktopforWindowsx64.exe</code></td><td>InstallShield</td>
+<td><code>iManageWorkDesktopforWindowsx64.exe /s /SMS /v"/qn REBOOT=ReallySuppress"</code></td>
+<td>reg:iManage Work Desktop</td>
+<td><span class="pill p-ok">OK</span></td></tr>
+
+</tbody>
+</table>
+
+<h2>2. Office configuration.xml (Outlook Classic only)</h2>
+
+<div class="small">Excluye Word/Excel/PowerPoint/Access/OneNote/Publisher/Teams/OneDrive/Groove/Lync/Bing. Reduce descarga de ~2GB a ~600-800MB (~5-8 min). Compatible Autopilot ESP.</div>
+
+<pre>&lt;Configuration ID="NodeDeploy-Outlook-Classic-Only"&gt;
+  &lt;Add OfficeClientEdition="64" Channel="Current" ForceUpgrade="TRUE"
+       AllowCdnFallback="TRUE" OfficeMgmtCOM="TRUE"&gt;
+    &lt;Product ID="O365ProPlusRetail"&gt;
+      &lt;Language ID="es-es" /&gt;
+      &lt;Language ID="en-us" /&gt;
+      &lt;ExcludeApp ID="Access" /&gt;
+      &lt;ExcludeApp ID="Excel" /&gt;
+      &lt;ExcludeApp ID="Groove" /&gt;
+      &lt;ExcludeApp ID="Lync" /&gt;
+      &lt;ExcludeApp ID="OneDrive" /&gt;
+      &lt;ExcludeApp ID="OneNote" /&gt;
+      &lt;ExcludeApp ID="PowerPoint" /&gt;
+      &lt;ExcludeApp ID="Publisher" /&gt;
+      &lt;ExcludeApp ID="Teams" /&gt;
+      &lt;ExcludeApp ID="Word" /&gt;
+      &lt;ExcludeApp ID="Bing" /&gt;
+    &lt;/Product&gt;
+  &lt;/Add&gt;
+  &lt;Updates Enabled="TRUE" Channel="Current" /&gt;
+  &lt;Display Level="None" AcceptEULA="TRUE" /&gt;
+  &lt;Property Name="FORCEAPPSHUTDOWN" Value="TRUE" /&gt;
+  &lt;Property Name="AUTOACTIVATE" Value="0" /&gt;
+  &lt;Property Name="SharedComputerLicensing" Value="0" /&gt;
+  &lt;Property Name="DeviceBasedLicensing" Value="0" /&gt;
+  &lt;Logging Level="Standard" Path="%TEMP%\OfficeSetup_NodeDeploy" /&gt;
+&lt;/Configuration&gt;</pre>
+
+<h2>3. ESET install_config.ini handling</h2>
+
+<div class="small">
+El MSI de ESET Management Agent <b>no</b> auto-detecta el INI. NodeDeploy parsea cada
+<code>KEY=VALUE</code> y los pasa como properties msiexec inline (~6137 chars cmdline,
+9 propiedades). Validado: exit 0 en 45s, service EraAgentSvc Running.
+</div>
+
+<table>
+<thead><tr><th>Property</th><th>Valor</th><th>Funcion</th></tr></thead>
+<tbody>
+<tr><td><code>P_HOSTNAME</code></td><td>kb4t5os6...ecaserver.eset.com</td><td>FQDN ESET PROTECT Cloud</td></tr>
+<tr><td><code>P_PORT</code></td><td>443</td><td>Puerto TLS</td></tr>
+<tr><td><code>P_CERT_CONTENT</code></td><td>~3000 chars base64 PFX</td><td>Cert peer del agente</td></tr>
+<tr><td><code>P_CERT_AUTH_CONTENT</code></td><td>~2500 chars base64 DER</td><td>CA cert (validar server)</td></tr>
+<tr><td><code>P_CERT_PASSWORD</code></td><td>(vacio)</td><td>PFX sin password</td></tr>
+<tr><td><code>P_CERT_PASSWORD_IS_BASE64</code></td><td>yes</td><td>Codificacion password</td></tr>
+<tr><td><code>P_INSTALL_MODE_EULA_ONLY</code></td><td>1</td><td>Aceptar EULA en silent</td></tr>
+<tr><td><code>P_ENABLE_TELEMETRY</code></td><td>1</td><td>Telemetria habilitada</td></tr>
+</tbody>
+</table>
+
+<h2>4. Compatibilidad Intune Win32 / Autopilot</h2>
+
+<table>
+<thead><tr>
+<th>Modelo</th><th>App</th><th>Compat</th><th>Como empaquetar</th>
+</tr></thead>
+<tbody>
+
+<tr><td rowspan="6"><b>Intune Win32</b><br><span class="meta">.intunewin</span></td>
+<td>MSI nativo (AnyDesk, AqNet, Nebula, Cortex, ESET)</td>
+<td><span class="pill p-ok">OK</span></td>
+<td><code>IntuneWinAppUtil.exe -c &lt;src&gt; -s &lt;msi&gt; -o &lt;out&gt;</code><br>Detection rule: MSI Product Code (auto-detect).</td></tr>
+
+<tr><td>EXE NSIS (Autofirma, Bit4id)</td>
+<td><span class="pill p-ok">OK</span></td>
+<td>Install: <code>setup.exe /S</code> | Uninstall: <code>"%ProgramFiles%\App\uninstall.exe" /S</code> | Detection: File exists o Registry DisplayName.</td></tr>
+
+<tr><td>EXE Inno (PDFelement)</td>
+<td><span class="pill p-ok">OK</span></td>
+<td>Install: <code>setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-</code> | Uninstall: <code>"%ProgramFiles%\App\unins000.exe" /SILENT</code> | Detection: File o Registry.</td></tr>
+
+<tr><td>EXE InstallShield (Mitel, iManage Agent/Work)</td>
+<td><span class="pill p-ok">OK</span></td>
+<td>Install: <code>setup.exe /s /SMS /v"/qn"</code> | Uninstall: <code>msiexec /x {ProductCode} /qn</code> | Detection: Product Code embebido.</td></tr>
+
+<tr><td>EXE WiX Burn (iManage Drive / Native)</td>
+<td><span class="pill p-ok">OK</span></td>
+<td>Install: <code>setup.exe /quiet /norestart</code> | Uninstall: <code>setup.exe /uninstall /quiet</code> | Detection: Bundle UpgradeCode.</td></tr>
+
+<tr><td>EXE Chrome bootstrap stub</td>
+<td><span class="pill p-warn">!</span></td>
+<td>Mejor usar MSI corporativo Chrome Enterprise (<code>GoogleChromeStandaloneEnterprise64.msi</code>). El stub descarga online y puede fallar en redes offline.</td></tr>
+
+<tr><td rowspan="3"><b>Intune Microsoft 365 Apps</b></td>
+<td>Office C2R (Outlook Classic)</td>
+<td><span class="pill p-ok">OK</span></td>
+<td>Intune > Apps > Add > Microsoft 365 Apps for Windows 10/11 > Configuration designer (importar configuration.xml). No requiere Win32 wrap.</td></tr>
+
+<tr><td>New Outlook (Monarch)</td>
+<td><span class="pill p-info">i</span></td>
+<td>Auto-disponible junto a Classic en deployments C2R 16.0+. Sin instalacion adicional.</td></tr>
+
+<tr><td>Visio/Project</td>
+<td><span class="pill p-info">i</span></td>
+<td>Anadir &lt;Product ID="VisioProRetail"&gt; / "ProjectProRetail" al XML si aplica.</td></tr>
+
+<tr><td rowspan="3"><b>Autopilot ESP</b><br><span class="meta">Enrollment Status Page</span></td>
+<td>Apps Intune Win32 + Office</td>
+<td><span class="pill p-ok">OK</span></td>
+<td>Asignar como required al device group. ESP bloquea login hasta que termine. Recomendado timeout 120 min.</td></tr>
+
+<tr><td>ESET (con INI)</td>
+<td><span class="pill p-ok">OK</span></td>
+<td>Empaquetar MSI + INI en mismo .intunewin. Install command incluir todas las P_ props. Misma cmdline que NodeDeploy genera (parsea INI).</td></tr>
+
+<tr><td>Cortex XDR (Andersen MSI)</td>
+<td><span class="pill p-ok">OK</span></td>
+<td>MSI directo en Intune. Anadir <code>REBOOT=ReallySuppress</code>. Reboot diferido al final del ESP.</td></tr>
+
+<tr><td rowspan="2"><b>Win32 Limitaciones</b></td>
+<td>configuration.xml dinamico (per-equipo)</td>
+<td><span class="pill p-warn">!</span></td>
+<td>Si necesitas XML distinto por tenant/dpto: usar PowerShell script + Win32 con script.ps1 que renderiza XML pre-install.</td></tr>
+
+<tr><td>iManage SSO / config tenant</td>
+<td><span class="pill p-warn">!</span></td>
+<td>Tras instalar, aplicar registry config con segundo Win32 app (config-only) o GPO.</td></tr>
+
+</tbody>
+</table>
+
+<h2>5. Detection rules Intune (recomendadas)</h2>
+
+<div class="grid2">
+<div class="card">
+<h3>MSI</h3>
+<pre>Type: MSI
+ProductCode: {tomar de cada msi}
+ProductVersion: (auto)</pre>
+<span class="small">PowerShell para extraer ProductCode:<br><code>Get-AppLockerFileInformation "x.msi"</code> o Orca.</span>
+</div>
+
+<div class="card">
+<h3>NSIS / Inno / IS / Burn</h3>
+<pre>Type: Registry (preferido)
+Key: HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\&lt;AppName&gt;
+Value: DisplayVersion
+Detection: greater than or equal to "X.Y.Z"</pre>
+<span class="small">O alternativa File exists: comprobar exe principal en Program Files.</span>
+</div>
+
+<div class="card">
+<h3>Office C2R</h3>
+<pre>Type: Registry
+Key: HKLM\Software\Microsoft\Office\ClickToRun\Configuration
+Value: ProductReleaseIds
+Detection: contains "O365ProPlusRetail"</pre>
+</div>
+
+<div class="card">
+<h3>ESET Mgmt Agent</h3>
+<pre>Type: File
+Path: %ProgramFiles%\ESET\RemoteAdministrator\Agent\
+File: ERAAgent.exe
+Detection: exists + version >= 13.1</pre>
+<span class="small">Adicionalmente service EraAgentSvc Running indica enrolamiento OK.</span>
+</div>
+</div>
+
+<h2>6. Resumen de tiempos (test real esta VM v3.3 + INI)</h2>
+
+<table>
+<thead><tr><th>App</th><th>Tiempo</th><th>Notas</th></tr></thead>
+<tbody>
+<tr><td>AnyDesk</td><td>12s</td><td></td></tr>
+<tr><td>AqNet</td><td>17s</td><td></td></tr>
+<tr><td>Nebula CertAgent</td><td>12s</td><td></td></tr>
+<tr><td>MDR / Cortex XDR</td><td>39s</td><td>Driver + service</td></tr>
+<tr><td>ESET Mgmt Agent</td><td>45s</td><td>con INI parsed inline</td></tr>
+<tr><td>Google Chrome</td><td>73s</td><td>Descarga online ~80MB</td></tr>
+<tr><td>Autofirma</td><td>125s</td><td>Pesado (130MB)</td></tr>
+<tr><td>Bit4id Middleware</td><td>29s</td><td></td></tr>
+<tr><td>PDFelement Business</td><td>306s</td><td>570MB Inno</td></tr>
+<tr><td>MitelConnect</td><td>87s</td><td>151MB IS wrapper</td></tr>
+<tr><td>Outlook Classic only</td><td>~300-480s</td><td>~600MB descarga en bg</td></tr>
+<tr><td>iManage Agent Services</td><td>20s</td><td></td></tr>
+<tr><td>iManage Drive</td><td>97s</td><td>+ Drive Native</td></tr>
+<tr><td>iManage Drive Native</td><td>10s</td><td></td></tr>
+<tr><td>iManage Work Desktop</td><td>59s</td><td></td></tr>
+<tr><td colspan="2"><b>Total (con Office bg + pre-cache)</b></td><td><b>~15-25 min</b></td></tr>
+</tbody>
+</table>
+
+<h2>7. Flags NodeDeploy.ps1</h2>
+
+<table>
+<thead><tr><th>Flag</th><th>Default</th><th>Efecto</th></tr></thead>
+<tbody>
+<tr><td><code>-Source &lt;path&gt;</code></td><td>UNC share</td><td>Carpeta con installers</td></tr>
+<tr><td><code>-StatePath &lt;path&gt;</code></td><td>C:\testeo2.0\state</td><td>State + logs + reports</td></tr>
+<tr><td><code>-LocalCache &lt;path&gt;</code></td><td>C:\NodeDeploy_cache</td><td>Pre-cache destino</td></tr>
+<tr><td><code>-ProbeOnly</code></td><td>off</td><td>Fingerprint + report, no instala</td></tr>
+<tr><td><code>-ResumeOnly</code></td><td>off</td><td>No reintenta fallidos</td></tr>
+<tr><td><code>-MaxRetries N</code></td><td>2</td><td>Reintentos por app</td></tr>
+<tr><td><code>-NoPreCache</code></td><td>off</td><td>Skip robocopy local</td></tr>
+<tr><td><code>-NoOfficeBackground</code></td><td>off</td><td>Office serial en Phase 1</td></tr>
+<tr><td><code>-SkipFinalize</code></td><td>off</td><td>No abre sysdm.cpl/lusrmgr.msc</td></tr>
+</tbody>
+</table>
+
+<hr>
+<div class="meta">NodeDeploy v3.3 - 2026-05-12 - Sc3.0 production rollout - support@es.andersen.com</div>
+
+</body>
+</html>
