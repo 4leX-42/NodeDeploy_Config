@@ -76,7 +76,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '4.2.3'
+$Script:Version       = '4.2.11'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -233,18 +233,31 @@ function Set-AppRecord {
 #region SYSTEM CHECKS
 # ============================================================
 function Test-PendingReboot {
-    $signals = @()
+    # v4.2.5: separar señales HARD (CBS / WindowsUpdate / UpdateExeVolatile) de SOFT
+    # (PendingFileRenameOperations). PFRO la crea cualquier installer que programe
+    # un rename diferido (Office C2R, Outlook bootstrap, Bit4id, etc.) y NO bloquea
+    # instalaciones reales. Solo HardPending dispara defer de iManage Work Desktop;
+    # PFRO se reporta como warning informativo.
+    $hard = @()
+    $soft = @()
     $paths = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending',
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired',
         'HKLM:\SOFTWARE\Microsoft\Updates\UpdateExeVolatile'
     )
-    foreach ($p in $paths) { if (Test-Path $p) { $signals += $p } }
+    foreach ($p in $paths) { if (Test-Path $p) { $hard += $p } }
     try {
         $pf = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name PendingFileRenameOperations -ErrorAction SilentlyContinue
-        if ($pf -and $pf.PendingFileRenameOperations) { $signals += 'PendingFileRenameOperations' }
+        if ($pf -and $pf.PendingFileRenameOperations) { $soft += 'PendingFileRenameOperations' }
     } catch {}
-    return @{ Pending = ($signals.Count -gt 0); Signals = $signals }
+    $all = $hard + $soft
+    return @{
+        Pending     = ($all.Count -gt 0)
+        HardPending = ($hard.Count -gt 0)
+        Signals     = $all
+        HardSignals = $hard
+        SoftSignals = $soft
+    }
 }
 
 function Get-InstalledApps {
@@ -326,6 +339,127 @@ function Stop-ProcessSafe {
     Start-Sleep -Seconds $WaitSec
 }
 
+function Add-DefenderExclusionsScoped {
+    <#
+    .SYNOPSIS
+        Anade exclusiones Defender temporales para acelerar instaladores InstallScript.
+        Root cause perf: InstallScript descomprime data2.cab (66 MB) + escribe miles de
+        ficheros; Defender RTP escanea cada escritura -> WD pasa de ~46s a ~398s en maquinas
+        sin exclusiones. Las maquinas dev tenian exclusiones puestas a mano (enmascaraba el
+        coste). Aqui se anaden SOLO durante el install y se quitan en finally.
+        Devuelve las exclusiones que ESTE proceso anadio (no preexistentes) para removerlas
+        sin tocar exclusiones del usuario.
+    #>
+    param([string[]]$Paths = @(), [string[]]$Processes = @())
+    $added = @{ Paths = @(); Processes = @() }
+    try {
+        $st = Get-MpComputerStatus -ErrorAction Stop
+        if (-not $st.RealTimeProtectionEnabled) {
+            Write-Log "Defender RTP off - exclusiones innecesarias" 'INFO'
+            return $added
+        }
+    } catch {
+        Write-Log "Defender no presente/cmdlets ausentes (AV de terceros?); skip exclusiones" 'INFO'
+        return $added
+    }
+    $pref = Get-MpPreference -ErrorAction SilentlyContinue
+    $existingPaths = @($pref.ExclusionPath)
+    $existingProcs = @($pref.ExclusionProcess)
+    foreach ($p in $Paths) {
+        if (-not $p -or ($existingPaths -contains $p)) { continue }
+        try { Add-MpPreference -ExclusionPath $p -ErrorAction Stop; $added.Paths += $p } catch {}
+    }
+    foreach ($proc in $Processes) {
+        if (-not $proc -or ($existingProcs -contains $proc)) { continue }
+        try { Add-MpPreference -ExclusionProcess $proc -ErrorAction Stop; $added.Processes += $proc } catch {}
+    }
+    if ($added.Paths.Count -or $added.Processes.Count) {
+        Write-Log ("Defender exclusiones temporales: +{0} path, +{1} process" -f $added.Paths.Count, $added.Processes.Count) 'OK'
+    }
+    return $added
+}
+
+function Remove-DefenderExclusionsScoped {
+    param($Added)
+    if (-not $Added) { return }
+    foreach ($p in @($Added.Paths))       { try { Remove-MpPreference -ExclusionPath $p -ErrorAction SilentlyContinue } catch {} }
+    foreach ($proc in @($Added.Processes)) { try { Remove-MpPreference -ExclusionProcess $proc -ErrorAction SilentlyContinue } catch {} }
+    if (@($Added.Paths).Count -or @($Added.Processes).Count) {
+        Write-Log "Defender exclusiones temporales removidas (estado restaurado)" 'INFO'
+    }
+}
+
+function Disable-DefenderRealtimeScoped {
+    <#
+    .SYNOPSIS
+        Desactiva Defender RTP temporalmente para InstallScript pesado (iManage Work Desktop
+        descomprime data2.cab ~66 MB + miles de ficheros). Exclusiones por path/process
+        reducen pero no eliminan el coste (Defender mantiene minifilter hooks). Quitar RTP
+        completo acelera install ~20-30s adicionales.
+        Devuelve $true si logro desactivar (caller DEBE llamar Restore en finally).
+    #>
+    try {
+        $st = Get-MpComputerStatus -ErrorAction Stop
+    } catch {
+        Write-Log "Defender no presente/cmdlets ausentes; skip RTP disable" 'INFO'
+        return $false
+    }
+    if (-not $st.RealTimeProtectionEnabled) {
+        Write-Log "Defender RTP ya estaba OFF; nada que desactivar" 'INFO'
+        return $false
+    }
+    try {
+        Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop
+        Start-Sleep -Milliseconds 600
+        $verif = (Get-MpComputerStatus -ErrorAction SilentlyContinue).RealTimeProtectionEnabled
+        if (-not $verif) {
+            Write-Log "Defender RTP DESACTIVADO temporalmente (acelera InstallScript)" 'WARN'
+            return $true
+        }
+        Write-Log "Defender RTP disable rechazado por tamper protection / GPO" 'WARN'
+        return $false
+    } catch {
+        Write-Log "FAIL Defender RTP disable: $_" 'WARN'
+        return $false
+    }
+}
+
+function Restore-DefenderRealtime {
+    param([bool]$WasDisabled)
+    if (-not $WasDisabled) { return }
+    try {
+        Set-MpPreference -DisableRealtimeMonitoring $false -ErrorAction Stop
+        Write-Log "Defender RTP REACTIVADO" 'OK'
+    } catch {
+        Write-Log "FAIL restore Defender RTP: $_ - REVISAR ESTADO MANUAL" 'ERROR'
+    }
+}
+
+function Clear-StaleDefenderExclusions {
+    # Barre exclusiones iManage stale de un run previo que murio antes del finally
+    # (timeout/kill/reboot mid-install). Sin esto, Add-DefenderExclusionsScoped las salta
+    # por el contains-check (+0) y el scoped-remove nunca las borra -> leak permanente.
+    # Solo toca los nombres/paths exactos del installer; nunca exclusiones del usuario.
+    param([string[]]$Processes = @(), [string[]]$Paths = @())
+    try { $st = Get-MpComputerStatus -ErrorAction Stop } catch { return }
+    if (-not $st.RealTimeProtectionEnabled) { return }
+    $pref = Get-MpPreference -ErrorAction SilentlyContinue
+    $existingProcs = @($pref.ExclusionProcess)
+    $existingPaths = @($pref.ExclusionPath)
+    $n = 0
+    foreach ($proc in $Processes) {
+        if ($existingProcs -contains $proc) {
+            try { Remove-MpPreference -ExclusionProcess $proc -ErrorAction Stop; $n++ } catch {}
+        }
+    }
+    foreach ($p in $Paths) {
+        if ($p -and ($existingPaths -contains $p)) {
+            try { Remove-MpPreference -ExclusionPath $p -ErrorAction Stop; $n++ } catch {}
+        }
+    }
+    if ($n) { Write-Log "Defender: barridas $n exclusiones iManage stale (leak de run previo)" 'WARN' }
+}
+
 function Wait-MsiQuiet {
     param([int]$Timeout = 180)
     $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -337,6 +471,43 @@ function Wait-MsiQuiet {
         Start-Sleep -Seconds 3
     }
     Write-Log "Wait-MsiQuiet TIMEOUT ${Timeout}s - msiexec child siguio activo" 'WARN'
+    return $false
+}
+
+function Wait-InstallScriptChildren {
+    <#
+    .SYNOPSIS
+        Espera a que terminen los procesos hijos async lanzados por InstallShield InstallScript
+        (registro URL protocol handlers iwl:// per-user, COM/VSTO addins, file-association),
+        que pueden seguir corriendo despues de que el wrapper Setup.exe haya retornado exit 0.
+        Sin esto, el script principal declara OK mientras Windows aun esta consolidando el
+        registro -> primer click iwl:// muestra "Pick app" porque UserChoice no llego a tiempo.
+    .NOTES
+        Poll 1s (mas fino que Wait-MsiQuiet). Devuelve $true si limpio, $false si timeout.
+        Cierra solo cuando NINGUNO de los nombres listados sigue vivo durante 2 polls consecutivos
+        (evita race con procesos que terminan y rearrancan).
+    #>
+    param(
+        [Parameter(Mandatory)][string[]]$Names,
+        [int]$Timeout = 60,
+        [int]$StableChecks = 2
+    )
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $stable = 0
+    while ($sw.Elapsed.TotalSeconds -lt $Timeout) {
+        $alive = Get-Process -Name $Names -ErrorAction SilentlyContinue
+        if (-not $alive) {
+            $stable++
+            if ($stable -ge $StableChecks) {
+                Write-Log "InstallScript hijos drenados en $([int]$sw.Elapsed.TotalSeconds)s" 'INFO'
+                return $true
+            }
+        } else {
+            $stable = 0
+        }
+        Start-Sleep -Seconds 1
+    }
+    Write-Log "Wait-InstallScriptChildren TIMEOUT ${Timeout}s - procesos hijos siguen vivos" 'WARN'
     return $false
 }
 #endregion
@@ -355,10 +526,11 @@ function Invoke-Installer {
         [string]$Arguments = '',
         [int]$TimeoutSec   = 600,
         [string[]]$KillOnTimeout = @(),
-        [string]$WorkingDirectory
+        [string]$WorkingDirectory,
+        [ValidateSet('Normal','AboveNormal','High')][string]$Priority = 'Normal'
     )
     Write-Log "CMD : `"$FilePath`" $Arguments" 'DEBUG'
-    Write-Log "WAIT: ${TimeoutSec}s" 'DEBUG'
+    Write-Log "WAIT: ${TimeoutSec}s  PRIO: $Priority" 'DEBUG'
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName               = $FilePath
@@ -373,6 +545,14 @@ function Invoke-Installer {
     $p.StartInfo = $psi
     try { [void]$p.Start() } catch {
         return @{ ExitCode = -99; TimedOut = $false; Stderr = "$_"; Stdout = '' }
+    }
+    if ($Priority -ne 'Normal') {
+        try {
+            $p.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::$Priority
+            Write-Log "Process priority set to $Priority (PID $($p.Id))" 'DEBUG'
+        } catch {
+            Write-Log "No se pudo set priority $Priority en PID $($p.Id): $_" 'DEBUG'
+        }
     }
     $errTask = $p.StandardError.ReadToEndAsync()
     $outTask = $p.StandardOutput.ReadToEndAsync()
@@ -598,6 +778,35 @@ function Resolve-AppPath {
     return (Join-Path $Source $rel)
 }
 
+function Get-OfficeState {
+    <#
+    .SYNOPSIS
+        Detecta presencia de Word y Outlook en cualquier ruta soportada
+        (Office 64-bit en ProgramFiles, Office 32-bit en ProgramFiles(x86)).
+        Cubre tanto C2R (Microsoft 365 Apps) como Outlook Classic standalone:
+        ambos comparten el mismo Office16\OUTLOOK.EXE, solo cambia la rama x64/x86.
+    .OUTPUTS
+        Hashtable: @{ Word=$bool; Outlook=$bool; WordPath=''; OutlookPath=''; Arch='x64|x86|none' }
+    #>
+    $roots = @(
+        @{ Path = "$env:ProgramFiles\Microsoft Office\root\Office16"; Arch = 'x64' },
+        @{ Path = "${env:ProgramFiles(x86)}\Microsoft Office\root\Office16"; Arch = 'x86' }
+    )
+    $state = @{ Word=$false; Outlook=$false; WordPath=''; OutlookPath=''; Arch='none' }
+    foreach ($r in $roots) {
+        if (-not $r.Path) { continue }
+        if (-not $state.Word) {
+            $w = Join-Path $r.Path 'WINWORD.EXE'
+            if (Test-Path $w) { $state.Word=$true; $state.WordPath=$w; $state.Arch=$r.Arch }
+        }
+        if (-not $state.Outlook) {
+            $o = Join-Path $r.Path 'OUTLOOK.EXE'
+            if (Test-Path $o) { $state.Outlook=$true; $state.OutlookPath=$o; if ($state.Arch -eq 'none') { $state.Arch=$r.Arch } }
+        }
+    }
+    return $state
+}
+
 function Resolve-OfficeXml {
     $candidates = @(
         (Join-Path $Source 'Sc3.0\configuration.xml'),
@@ -652,17 +861,15 @@ function Install-App {
     # v4.2.2: Office pre-check especial — skip SOLO si Word AND Outlook ambos presentes.
     # Word presente sin Outlook -> handler bootstrap. Word ausente -> handler full C2R.
     if ($App.Type -eq 'office' -and -not $ForceReinstall) {
-        $office16 = "$env:ProgramFiles\Microsoft Office\root\Office16"
-        $hasWord    = Test-Path (Join-Path $office16 'WINWORD.EXE')
-        $hasOutlook = Test-Path (Join-Path $office16 'OUTLOOK.EXE')
-        if ($hasWord -and $hasOutlook) {
+        $os = Get-OfficeState
+        if ($os.Word -and $os.Outlook) {
             $record.status    = 'ok'
-            $record.evidence  = @('file:WINWORD.EXE','file:OUTLOOK.EXE')
+            $record.evidence  = @("file:WINWORD.EXE($($os.Arch))","file:OUTLOOK.EXE($($os.Arch))")
             $record.validated = $true
             $record.errors    = @()
             $record.finished  = (Get-Date -Format 'o')
             Set-AppRecord $State $App.Name $record
-            Write-Log "SKIP $($App.Name) - Office completo (Word + Outlook ya presentes)" 'OK'
+            Write-Log "SKIP $($App.Name) - Office completo (Word + Outlook ya presentes, $($os.Arch))" 'OK'
             return $record
         }
         # Word presente sin Outlook, o Office ausente: fall through al handler que decide.
@@ -700,10 +907,10 @@ function Install-App {
     # iManage Work Desktop 10.9.x exige Word + Outlook (verificado via log:
     # "Work Desktop install did not detect MS Office is installed" sin WINWORD.EXE).
     if ($App.RequiresOffice) {
-        $office16 = "$env:ProgramFiles\Microsoft Office\root\Office16"
+        $os = Get-OfficeState
         $missing = @()
-        if (-not (Test-Path (Join-Path $office16 'OUTLOOK.EXE')))  { $missing += 'OUTLOOK.EXE' }
-        if (-not (Test-Path (Join-Path $office16 'WINWORD.EXE'))) { $missing += 'WINWORD.EXE' }
+        if (-not $os.Outlook) { $missing += 'OUTLOOK.EXE' }
+        if (-not $os.Word)    { $missing += 'WINWORD.EXE' }
         if ($missing.Count -gt 0) {
             $record.status = 'fail'
             $record.errors = @("office_prereq_missing:$($missing -join ',')")
@@ -729,17 +936,29 @@ function Install-App {
     }
 
     # Reboot pendiente?
+    # v4.2.6: NO defer automatico por reboot pending. Probado en campo: aunque CBS RebootPending
+    # exista, iManage Work Desktop / iManage stack instala correctamente (49s, exit 0). El defer
+    # historico generaba fricción innecesaria (forzaba reboot + Deploy.bat resume) en equipos
+    # imagenados que tenian CBS pending residual sin afectar realmente al installer InstallShield.
+    # Politica nueva:
+    #   - SoftSignals (PFRO) -> INFO (no bloquea, no avisa al usuario para reboot).
+    #   - HardSignals (CBS/WU/UpdateExeVolatile) -> WARN log, install procede igual.
+    #   - Opt-in defer historico: NODEDEPLOY_DEFER_ON_REBOOT=1 (recupera comportamiento <=v4.2.5).
+    #   - Si install REALMENTE falla por servicing lock -> exit_code/InstallShield log lo expone.
     $reb = Test-PendingReboot
-    if ($reb.Pending) {
-        Write-Log "WARN: Reboot pending antes de $($App.Name): $($reb.Signals -join ', ')" 'WARN'
-        if (($App.RequiresOffice -or $App.Type -like '*imanage*') -and $env:NODEDEPLOY_FORCE_IMANAGE -ne '1') {
+    if ($reb.SoftSignals) {
+        Write-Log "INFO: Soft reboot signals antes de $($App.Name): $($reb.SoftSignals -join ', ') (no bloqueante)" 'INFO'
+    }
+    if ($reb.HardPending) {
+        Write-Log "WARN: Hard reboot pending antes de $($App.Name): $($reb.HardSignals -join ', ') (install procede)" 'WARN'
+        if ($env:NODEDEPLOY_DEFER_ON_REBOOT -eq '1' -and ($App.RequiresOffice -or $App.Type -like '*imanage*')) {
             $record.status = 'deferred_reboot'
-            $record.errors = @("reboot_pending:$($reb.Signals -join '|')")
+            $record.errors = @("reboot_pending:$($reb.HardSignals -join '|')")
             $record.finished = (Get-Date -Format 'o')
             Set-AppRecord $State $App.Name $record
             $State.reboot_required = $true
             Save-State $State
-            Write-Log "DEFERRED $($App.Name) - reboot pendiente. Reanuda con: Deploy.bat resume" 'WARN'
+            Write-Log "DEFERRED $($App.Name) - NODEDEPLOY_DEFER_ON_REBOOT=1. Reanuda con: Deploy.bat resume" 'WARN'
             return $record
         }
     }
@@ -750,9 +969,16 @@ function Install-App {
     $record.started = (Get-Date -Format 'o')
 
     # Cleanup pre-instalación iManage Work Desktop
+    # v4.2.7: WaitSec adaptativo - 0s si no habia procesos vivos (caso comun en imagen limpia).
     if ($App.Type -eq 'installshield-imanage') {
-        Write-Log "Limpieza pre-instalación iManage..." 'INFO'
-        Stop-ProcessSafe -Names @('iManageStayExec','iManageDrive','iManageWorkDesktop','iManageEFS','iManageAgentSvc') -WaitSec 2
+        $imProcs = @('iManageStayExec','iManageDrive','iManageWorkDesktop','iManageEFS','iManageAgentSvc')
+        $alive = Get-Process -Name $imProcs -ErrorAction SilentlyContinue
+        if ($alive) {
+            Write-Log "Limpieza pre-instalación iManage ($($alive.Count) procesos vivos)..." 'INFO'
+            Stop-ProcessSafe -Names $imProcs -WaitSec 2
+        } else {
+            Write-Log "Pre-cleanup iManage: sin procesos vivos (skip wait)" 'DEBUG'
+        }
     }
 
     $result = $null
@@ -814,15 +1040,45 @@ function Install-App {
                 $result = @{ ExitCode = -12; TimedOut = $false; LogFile = ''; Command = '' }
             } else {
                 # Per docs: wrapper /s setup.iss (positional). NO /f1, NO /v"/qn".
+                # v4.2.4: exclusiones Defender temporales alrededor del install. El motor
+                # InstallScript descomprime data2.cab (66 MB) y escribe miles de ficheros;
+                # el escaneo RTP por-fichero infla el install de ~46s a ~398s. La exclusion
+                # de PROCESO neutraliza el escaneo sin importar donde extraiga el launcher.
+                # Se restauran SIEMPRE en finally (incluido timeout/fallo).
+                $imanageDirs = @(
+                    (Join-Path $env:ProgramFiles 'iManage'),
+                    (Join-Path ${env:ProgramFiles(x86)} 'iManage')
+                )
+                $dlInstalls = Join-Path $env:LOCALAPPDATA 'Downloaded Installations'
+                $exclPaths  = @($extractDir, $env:TEMP, $dlInstalls) + $imanageDirs
+                # Solo nombres especificos del engine InstallScript iManage. NO genericos
+                # (setup.exe/wrap.exe): excluirlos deja agujero permanente -> malware con
+                # esos nombres correria sin escanear. El path-exclusion de extractDir/TEMP
+                # ya cubre la escritura de data2.cab por cualquier proceso hijo.
+                $exclProcs  = @('iManageWorkDesktopforWindowsx64.exe','ISBEW64.exe','ISSetup.dll')
+                # Barrido stale antes de añadir: borra leaks de runs muertos antes del finally.
+                Clear-StaleDefenderExclusions -Processes $exclProcs -Paths $exclPaths
+                $excl = Add-DefenderExclusionsScoped -Paths $exclPaths -Processes $exclProcs
+                # v4.2.8: disable RTP completo (acelera escaneo data2.cab). Priority Normal
+                # (NO High): v4.2.7 con priority High provoco que el script retornara antes
+                # de que los hijos async InstallScript terminaran (registro URL protocol
+                # iwl:// per-user, COM addins). Restore SIEMPRE en finally.
+                $rtpOff = Disable-DefenderRealtimeScoped
                 Push-Location $extractDir
                 try {
                     $result = Invoke-Installer -FilePath $shortExe -Arguments "/s setup.iss" -TimeoutSec $App.Timeout
                 } finally {
                     Pop-Location
+                    Restore-DefenderRealtime -WasDisabled $rtpOff
+                    Remove-DefenderExclusionsScoped $excl
                 }
                 $result.LogFile = $isLog
                 $result.Command = "`"$shortExe`" /s setup.iss"
-                Wait-MsiQuiet -Timeout 60 | Out-Null
+                # v4.2.8: poll por hijos InstallScript (ISBEW64.exe / iScript launchers) para
+                # que terminen sus post-actions ANTES de declarar OK. Reemplaza el Wait-MsiQuiet
+                # antiguo (Work Desktop no spawn msiexec). Sin esto, el script retorna mientras
+                # iManage sigue registrando URL protocol handlers per-user y Outlook addins.
+                Wait-InstallScriptChildren -Names @('ISBEW64','ISSetup','setup','iManageWorkDesktopforWindowsx64','iuninst') -Timeout 90 | Out-Null
             }
             # NB: $extractDir conservado para forense. Limpieza manual si OK.
         }
@@ -830,19 +1086,21 @@ function Install-App {
             $result = Invoke-BurnSilent -ExePath $file -TimeoutSec $App.Timeout
         }
         'office' {
-            # Smart detection v4.1:
+            # Smart detection v4.1 (refactor v4.2.9 -> usa Get-OfficeState para cubrir x64+x86):
             # iManage Work Desktop requiere Word + Outlook minimum.
-            # - Si Word presente AND Outlook ausente AND OutlookClassic.exe disponible
-            #   -> bootstrap rapido OutlookClassic.exe (anade Outlook a baseline existente)
-            # - Else -> Office C2R full configuration.xml (incluye Word/Excel/PPT/Outlook)
-            $office16Root = "$env:ProgramFiles\Microsoft Office\root\Office16"
-            $outlookClassic = Join-Path $office16Root 'OUTLOOK.EXE'
-            $word   = Join-Path $office16Root 'WINWORD.EXE'
-            $hasWord = Test-Path $word
+            # Matriz:
+            #   Word=YES Outlook=YES    -> SKIP (pre-check L835 ya lo intercepta antes)
+            #   Word=YES Outlook=NO + OutlookClassic.exe presente -> bootstrap rapido
+            #   Word=YES Outlook=NO sin bootstrap -> Office C2R full (anade Outlook)
+            #   Word=NO   *                       -> Office C2R full
+            $os = Get-OfficeState
             $outlookClassicBootstrap = Join-Path $Source 'OutlookClassic.exe'
 
-            if ($hasWord -and -not (Test-Path $outlookClassic) -and (Test-Path $outlookClassicBootstrap)) {
-                Write-Log "Word presente, Outlook ausente. Bootstrap OutlookClassic.exe..." 'INFO'
+            if ($os.Word -and $os.Outlook) {
+                Write-Log "Office completo detectado ($($os.Arch)). Skip install." 'OK'
+                $result = @{ ExitCode = 0; TimedOut = $false; LogFile = ''; Command = 'skip:already-installed' }
+            } elseif ($os.Word -and -not $os.Outlook -and (Test-Path $outlookClassicBootstrap)) {
+                Write-Log "Word presente ($($os.Arch)), Outlook ausente. Bootstrap OutlookClassic.exe..." 'INFO'
                 Stop-ProcessSafe -Names @('OUTLOOK','OfficeClickToRun','OfficeC2RClient','setup') -WaitSec 3
                 $result = Invoke-Installer -FilePath $outlookClassicBootstrap -Arguments '' -TimeoutSec $App.Timeout
                 $result.LogFile = ''
@@ -1061,18 +1319,24 @@ function Start-OfficeBackground {
     $record.attempts = ($record.attempts + 1)
     $record.started  = (Get-Date -Format 'o')
 
-    $office16Root = "$env:ProgramFiles\Microsoft Office\root\Office16"
-    $outlookClassic = Join-Path $office16Root 'OUTLOOK.EXE'
-    $word   = Join-Path $office16Root 'WINWORD.EXE'
-    $hasWord = Test-Path $word
+    $os = Get-OfficeState
     $outlookClassicBootstrap = Join-Path $Source 'OutlookClassic.exe'
 
     Stop-ProcessSafe -Names @('OUTLOOK','WINWORD','EXCEL','POWERPNT','OfficeClickToRun','OfficeC2RClient','setup') -WaitSec 3
 
     $proc = $null
     try {
-        if ($hasWord -and -not (Test-Path $outlookClassic) -and (Test-Path $outlookClassicBootstrap)) {
-            Write-Log "[BG] Word presente, Outlook ausente. Bootstrap OutlookClassic.exe..." 'INFO'
+        if ($os.Word -and $os.Outlook) {
+            Write-Log "[BG] Office completo ya presente ($($os.Arch)). Skip bg launch." 'OK'
+            $record.status    = 'ok'
+            $record.evidence  = @("file:WINWORD.EXE($($os.Arch))","file:OUTLOOK.EXE($($os.Arch))")
+            $record.validated = $true
+            $record.errors    = @()
+            $record.finished  = (Get-Date -Format 'o')
+            Set-AppRecord $State $App.Name $record
+            return $null
+        } elseif ($os.Word -and -not $os.Outlook -and (Test-Path $outlookClassicBootstrap)) {
+            Write-Log "[BG] Word presente ($($os.Arch)), Outlook ausente. Bootstrap OutlookClassic.exe..." 'INFO'
             $proc = Start-Process -FilePath $outlookClassicBootstrap -PassThru -ErrorAction Stop
             $record.args_used = "`"$outlookClassicBootstrap`""
         } else {
@@ -1104,67 +1368,103 @@ function Start-OfficeBackground {
     return @{
         Process   = $proc
         StartedAt = Get-Date
-        Mode      = if ($hasWord -and -not (Test-Path $outlookClassic) -and (Test-Path $outlookClassicBootstrap)) { 'bootstrap' } else { 'c2r' }
+        Mode      = if ($os.Word -and -not $os.Outlook -and (Test-Path $outlookClassicBootstrap)) { 'bootstrap' } else { 'c2r' }
     }
 }
 
 function Complete-OfficeBackground {
     <#
     .SYNOPSIS
-        Espera al proceso Office bg y valida instalacion.
-        Polla OUTLOOK.EXE adicional tras exit por si bootstrap salio rapido.
+        Espera Office bg detectando PRESENCIA de Word + Outlook (no exit del proceso).
+        Cadencia adaptativa: primer check a 60s, luego cada 10s hasta target detectado.
+        Target depende del modo:
+          - bootstrap (OutlookClassic.exe) -> Outlook presente basta.
+          - c2r (OfficeSetup full)         -> Word + Outlook presentes.
+        Esto es mas robusto que esperar al proceso: el wrapper Setup puede salir antes
+        de que C2R service termine de copiar binarios, y la fuente de verdad es la
+        presencia de los EXEs en disco. En cuanto los detecta -> break inmediato.
     #>
     param($Bg, $App, $State)
     if (-not $Bg) { return }
 
     $proc    = $Bg.Process
-    $timeout = [int]$App.Timeout
     $record  = Get-AppRecord $State $App.Name
+    $mode    = $Bg.Mode
 
-    Write-Log "Esperando Office background (PID $($proc.Id), timeout ${timeout}s)..." 'INFO'
+    # Timeout dinamico por modo. Cap protector ante CDN colgado / install corrupto.
+    $timeout = if ($mode -eq 'bootstrap') { 300 } else { [int]$App.Timeout }
 
-    while (-not $proc.HasExited) {
-        $elapsed = (Get-Date) - $Bg.StartedAt
-        if ($elapsed.TotalSeconds -gt $timeout) {
-            Write-Log "Office BG TIMEOUT (${timeout}s) -> matando PID $($proc.Id)" 'ERROR'
-            try {
-                Get-CimInstance Win32_Process -Filter "ParentProcessId=$($proc.Id)" -ErrorAction SilentlyContinue | ForEach-Object {
-                    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-                }
-                $proc.Kill()
-            } catch {}
+    # Cadencia adaptativa: primer check a 60s, luego cada 10s.
+    $firstCheckAt = 60
+    $fastInterval = 10
+
+    Write-Log "Esperando Office background (PID $($proc.Id), modo=$mode, timeout ${timeout}s, check inicial ${firstCheckAt}s, despues cada ${fastInterval}s)..." 'INFO'
+
+    $detected = $false
+    $exitCode = $null
+    $check = $null
+
+    Start-Sleep -Seconds $firstCheckAt
+
+    while ($true) {
+        $elapsedSec = [int]((Get-Date) - $Bg.StartedAt).TotalSeconds
+
+        # Capturar exit code una vez (no aborta loop; seguimos hasta detect o timeout)
+        if (-not $exitCode -and $proc.HasExited) {
+            $exitCode = $proc.ExitCode
+            Write-Log "Office wrapper PID $($proc.Id) exit $exitCode tras ${elapsedSec}s" 'INFO'
+        }
+
+        # Detect via filesystem (fuente de verdad)
+        $os = Get-OfficeState
+        $done = if ($mode -eq 'bootstrap') { $os.Outlook } else { $os.Word -and $os.Outlook }
+
+        if ($done) {
+            $detected = $true
+            $check = Test-InstalledStrict -Keywords $App.Detect -ServiceNames $App.ServiceNames -FilePaths $App.FilePaths -ExcludeDetect $App.ExcludeDetect -Refresh
+            Write-Log "Office detectado (modo=$mode, $($os.Arch), Word=$($os.Word) Outlook=$($os.Outlook)) tras ${elapsedSec}s" 'OK'
+            break
+        }
+
+        # Wrapper murio con error y no hay evidencia -> abort
+        if ($exitCode -and $exitCode -notin 0,3010,1641 -and -not $done) {
+            Write-Log "Office wrapper salio con exit $exitCode sin evidencia. Abortando espera." 'ERROR'
+            break
+        }
+
+        # Timeout
+        if ($elapsedSec -gt $timeout) {
+            Write-Log "Office BG TIMEOUT (${timeout}s, modo=$mode)" 'ERROR'
+            if (-not $proc.HasExited) {
+                Write-Log "Matando PID $($proc.Id) + hijos" 'WARN'
+                try {
+                    Get-CimInstance Win32_Process -Filter "ParentProcessId=$($proc.Id)" -ErrorAction SilentlyContinue | ForEach-Object {
+                        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+                    }
+                    $proc.Kill()
+                } catch {}
+            }
             $record.status      = 'fail_timeout'
             $record.timed_out   = $true
             $record.errors     += "timeout:${timeout}s"
             $record.finished    = (Get-Date -Format 'o')
-            $record.elapsed_sec = [int]$elapsed.TotalSeconds
+            $record.elapsed_sec = $elapsedSec
             Set-AppRecord $State $App.Name $record
             return
         }
-        Start-Sleep -Seconds 30
-        Write-Log "Office BG en progreso... $([int]$elapsed.TotalSeconds)s transcurridos" 'DEBUG'
+
+        Write-Log "Office BG check ${elapsedSec}s (Word=$($os.Word) Outlook=$($os.Outlook)) exit=$exitCode" 'DEBUG'
+        Start-Sleep -Seconds $fastInterval
     }
 
-    $proc.WaitForExit()
-    $exitCode = $proc.ExitCode
-    Start-Sleep -Seconds 5
+    # Asegurar exit code final si proceso aun vivo cuando detectamos via filesystem
+    if (-not $exitCode) {
+        if ($proc.HasExited) { $exitCode = $proc.ExitCode }
+        else                 { $exitCode = 0 }  # detectado por presencia, wrapper aun corriendo (post-actions)
+    }
 
-    $check = Test-InstalledStrict -Keywords $App.Detect -ServiceNames $App.ServiceNames -FilePaths $App.FilePaths -ExcludeDetect $App.ExcludeDetect -Refresh
-
-    # Bootstrap o C2R wrapper pueden salir antes que C2R service termine.
-    # Si exit 0 sin OUTLOOK.EXE, poll adicional hasta timeout restante.
-    if (-not $check.Installed -and $exitCode -eq 0) {
-        Write-Log "Office wrapper exit 0 sin evidencia OUTLOOK.EXE. Polling C2R service hasta ${timeout}s totales..." 'INFO'
-        while (((Get-Date) - $Bg.StartedAt).TotalSeconds -lt $timeout) {
-            Start-Sleep -Seconds 30
-            $check = Test-InstalledStrict -Keywords $App.Detect -ServiceNames $App.ServiceNames -FilePaths $App.FilePaths -ExcludeDetect $App.ExcludeDetect -Refresh
-            if ($check.Installed) { break }
-            $c2r = Get-Process -Name 'OfficeClickToRun','OfficeC2RClient' -ErrorAction SilentlyContinue
-            if (-not $c2r) {
-                Write-Log "C2R service no activo y sin OUTLOOK.EXE - abandono poll" 'WARN'
-                break
-            }
-        }
+    if (-not $check) {
+        $check = Test-InstalledStrict -Keywords $App.Detect -ServiceNames $App.ServiceNames -FilePaths $App.FilePaths -ExcludeDetect $App.ExcludeDetect -Refresh
     }
 
     $record.exit_code   = $exitCode
@@ -1173,7 +1473,7 @@ function Complete-OfficeBackground {
     $record.evidence    = $check.Evidence
     $record.validated   = $check.Installed
 
-    if ($check.Installed) {
+    if ($check.Installed -or $detected) {
         $record.status = 'ok'
         Write-Log "OK Office [BG] [$($check.Evidence -join ', ')] ($($record.elapsed_sec)s)" 'OK'
     } elseif ($exitCode -in 3010,1641) {
@@ -1284,9 +1584,11 @@ if ($drive.Free -lt 8GB) {
     Write-Log "WARN: <8GB libres en C: - puede fallar Office (descarga ~3GB)" 'WARN'
 }
 $reb = Test-PendingReboot
-if ($reb.Pending) {
-    Write-Log "Pending-reboot detectado: $($reb.Signals -join ', ')" 'WARN'
+if ($reb.HardPending) {
+    Write-Log "Pending-reboot HARD detectado: $($reb.HardSignals -join ', ')" 'WARN'
     Write-Log "Se recomienda reiniciar antes de iniciar el deploy." 'WARN'
+} elseif ($reb.SoftSignals) {
+    Write-Log "Pending-reboot SOFT (PFRO) detectado: $($reb.SoftSignals -join ', ') (no bloqueante)" 'INFO'
 }
 
 # Inventario presencia archivos
@@ -1315,11 +1617,33 @@ if ($Phase -eq 'probe') {
 
 if ($Phase -eq 'validate') {
     Write-Step "VALIDATE ONLY"
+    # v4.2.3: refresh cache + actualiza records state con resultado real (no deja records stale)
+    $Global:InstalledCache = Get-InstalledApps
+    $State.reboot_required = $false
     foreach ($a in $Script:Apps) {
-        $c = Test-InstalledStrict -Keywords $a.Detect -ServiceNames $a.ServiceNames -FilePaths $a.FilePaths -Refresh
+        $c = Test-InstalledStrict -Keywords $a.Detect -ServiceNames $a.ServiceNames -FilePaths $a.FilePaths -ExcludeDetect $a.ExcludeDetect
         $lvl = if ($c.Installed) { 'OK' } else { 'WARN' }
         Write-Log "[$lvl] $($a.Name): $($c.Evidence -join '; ')" $lvl
+
+        # Actualiza state record con resultado fresh (sobreescribe stale del run anterior)
+        $r = Get-AppRecord $State $a.Name
+        if (-not $r) {
+            $r = [pscustomobject]@{
+                name=$a.Name; type=$a.Type; status=$null
+                attempts=0; exit_code=$null; elapsed_sec=0
+                started=(Get-Date -Format 'o'); finished=$null
+                args_used=''; install_log=''; evidence=@(); errors=@()
+                validated=$false; timed_out=$false
+            }
+        }
+        $r.evidence  = $c.Evidence
+        $r.validated = $c.Installed
+        $r.finished  = (Get-Date -Format 'o')
+        $r.errors    = @()
+        $r.status    = if ($c.Installed) { 'ok' } else { 'missing' }
+        Set-AppRecord $State $a.Name $r
     }
+    Save-State $State
     Write-FinalReport $State | Out-Null
     exit 0
 }
@@ -1360,11 +1684,10 @@ if ($canBgOffice -and -not $ForceReinstall) {
     # v4.2.2: Office bg solo se LANZA si Word AND Outlook ambos presentes ya = SKIP bg.
     # Si Word presente sin Outlook -> bg lanza bootstrap (rapido).
     # Si Office ausente -> bg lanza C2R full.
-    $office16 = "$env:ProgramFiles\Microsoft Office\root\Office16"
-    $hasWord    = Test-Path (Join-Path $office16 'WINWORD.EXE')
-    $hasOutlook = Test-Path (Join-Path $office16 'OUTLOOK.EXE')
-    if ($hasWord -and $hasOutlook) {
-        Write-Log "Office completo ya instalado (Word + Outlook) - sin background launch" 'OK'
+    # v4.2.9: Get-OfficeState cubre Office x64 + x86.
+    $os = Get-OfficeState
+    if ($os.Word -and $os.Outlook) {
+        Write-Log "Office completo ya instalado (Word + Outlook, $($os.Arch)) - sin background launch" 'OK'
         $canBgOffice = $false
     }
 }

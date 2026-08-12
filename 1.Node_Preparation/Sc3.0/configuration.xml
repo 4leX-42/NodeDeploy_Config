@@ -14,8 +14,19 @@
     El XML antiguo Outlook-only sigue disponible en configuration_OutlookOnly.xml.bak
     por si se necesita escenario sin Word (NO compatible con iManage Work Desktop).
   -->
+  <!--
+    v4.2.9: pre-stage local en 1.Node_Preparation\Office\Data\<build>\ (~4GB con dos
+    idiomas). Office Setup busca automaticamente la subcarpeta Office\Data relativa
+    al directorio del setup.exe; SIN <SourcePath> evitamos anidados (ODT /download
+    duplica el path cuando SourcePath ya termina en \Office).
+    Si la carpeta Office\Data falta, ODT cae a CDN (AllowCdnFallback=TRUE).
+    Channel SemiAnnualEnterprise: builds estables, payload mas cacheable.
+    Updates Enabled=FALSE durante install (evita check pos-install ~30-60s).
+    Re-pre-stage: cd 1.Node_Preparation; OfficeSetup.exe /download Sc3.0\configuration.xml
+    (la estructura final debe ser Office\Data\<build>\... NO Office\Office\Data\...).
+  -->
   <Add OfficeClientEdition="64"
-       Channel="Current"
+       Channel="SemiAnnualEnterprise"
        ForceUpgrade="TRUE"
        AllowCdnFallback="TRUE"
        OfficeMgmtCOM="TRUE">
@@ -33,7 +44,7 @@
     </Product>
   </Add>
 
-  <Updates Enabled="TRUE" Channel="Current" />
+  <Updates Enabled="FALSE" Channel="SemiAnnualEnterprise" />
 
   <AppSettings>
     <Setup Name="Company" Value="Andersen" />

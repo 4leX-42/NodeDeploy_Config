@@ -20,3 +20,13 @@ NodeDeploy_Run/state/*.log
 
 # Capturas
 *.png
+
+# Payload Office ODT / catalogos (no son config)
+*.cab
+*.cat
+
+# Salidas de diagnostico runtime
+Diag-*.txt
+
+# Estado local del agente
+.claude/
