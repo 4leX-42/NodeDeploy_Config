@@ -98,4 +98,4 @@ nodedeploy\
 
 ---
 
-_Última actualización: 2026-09-24 — NodeDeploy PRO v5.0.0_
+_Última actualización: 2026-09-24 — NodeDeploy PRO v5.0.1_
