@@ -154,6 +154,20 @@ function Write-Step {
 
 function Get-Elapsed { [int]((Get-Date) - $Script:StartTime).TotalSeconds }
 
+function Format-Duration {
+    # 737 -> "12 min 17 s" ; 45 -> "45 s"
+    param([int]$Seconds)
+    $m = [int][math]::Floor($Seconds / 60); $s = [int]($Seconds % 60)
+    if ($m -gt 0) { return ('{0} min {1:D2} s' -f $m, $s) }
+    return ('{0} s' -f $s)
+}
+
+function Format-Clock {
+    # 125 -> "02:05"
+    param([int]$Seconds)
+    return ('{0:D2}:{1:D2}' -f [int][math]::Floor($Seconds / 60), [int]($Seconds % 60))
+}
+
 function Disable-ConsoleQuickEdit {
     # Con QuickEdit activo, un clic en la ventana de consola la deja en modo "Seleccionar" y
     # CONGELA el script (Write-Host bloquea) hasta pulsar una tecla: en el primer Lenovo real hubo
@@ -1298,7 +1312,7 @@ function Write-FinalReport {
     [void]$sb.AppendLine("- **Equipo:** $env:COMPUTERNAME")
     [void]$sb.AppendLine("- **Session:** $($Script:SessionId)")
     [void]$sb.AppendLine("- **Inicio:** $($Script:StartTime.ToString('yyyy-MM-dd HH:mm:ss'))")
-    [void]$sb.AppendLine("- **Duracion total:** ${dur}s ($([math]::Round($dur/60,1)) min)")
+    [void]$sb.AppendLine("- **Duracion total:** $(Format-Duration $dur) ($dur s)")
     [void]$sb.AppendLine("- **Modo:** $(if ($Serial) { 'serie' } else { 'carriles MSI + EXE en paralelo, Outlook en background' }) | reintentos max $MaxRetries")
     [void]$sb.AppendLine("- **Reboot requerido:** $($State.reboot_required)")
     [void]$sb.AppendLine("- **Log:** $($Script:LogFile)")
@@ -1314,14 +1328,16 @@ function Write-FinalReport {
     [void]$sb.AppendLine('')
     [void]$sb.AppendLine('## Detalle y cronograma')
     [void]$sb.AppendLine('')
-    [void]$sb.AppendLine('| App | Carril | Estado | Inicio (s) | Duracion | Intentos | Exit | Evidencia / errores |')
+    [void]$sb.AppendLine('| App | Carril | Estado | Inicio (mm:ss) | Duracion | Intentos | Exit | Evidencia / errores |')
     [void]$sb.AppendLine('|---|---|---|---|---|---|---|---|')
     foreach ($a in ($Script:Apps | Sort-Object Lane, Order)) {
         $r = Get-AppRecord $State $a.Name
         if (-not $r) { [void]$sb.AppendLine("| $($a.Name) | $($a.Lane) | not_run | - | - | - | - | - |"); continue }
         $info = if ($r.status -in $Script:OkStatus) { ($r.evidence -join '; ') } else { ($r.errors -join '; ') }
         if (-not $info) { $info = '-' }
-        [void]$sb.AppendLine("| $($r.name) | $($a.Lane) | $($r.status) | $($r.start_offset_sec) | $($r.elapsed_sec)s | $($r.attempts) | $($r.exit_code) | $info |")
+        $ini = if ($null -ne $r.start_offset_sec -and "$($r.start_offset_sec)" -ne '') { Format-Clock ([int]$r.start_offset_sec) } else { '-' }
+        $durTxt = if ($r.status -eq 'skipped_by_user' -or ($r.status -eq 'ok' -and -not $r.attempts)) { '-' } else { Format-Duration ([int]$r.elapsed_sec) }
+        [void]$sb.AppendLine("| $($r.name) | $($a.Lane) | $($r.status) | $ini | $durTxt | $($r.attempts) | $($r.exit_code) | $info |")
     }
     $bad = @($apps | Where-Object { $_.status -like 'fail*' -or $_.status -eq 'blocked' })
     if ($bad.Count) {
@@ -1512,7 +1528,7 @@ $apps = Get-AllRecords $State
 $failures = @($apps | Where-Object { $_.status -like 'fail*' -or $_.status -eq 'blocked' })
 
 Write-Step 'RESUMEN'
-Write-Log "Duracion: $(Get-Elapsed)s" 'INFO'
+Write-Log "Duracion total: $(Format-Duration (Get-Elapsed))" 'INFO'
 Write-Log "OK: $(@($apps | Where-Object { $_.status -in $Script:OkStatus }).Count) / $(@($Script:Apps).Count)" 'OK'
 Write-Log "FAIL/BLOCKED: $($failures.Count)$(if ($failures.Count) { ' -> ' + (($failures | ForEach-Object { $_.name }) -join ', ') })" $(if ($failures.Count) { 'ERROR' } else { 'INFO' })
 Write-Log "Report: $reportFile" 'INFO'

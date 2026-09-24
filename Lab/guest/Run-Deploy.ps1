@@ -38,6 +38,7 @@ $sw = [Diagnostics.Stopwatch]::StartNew()
 # Sin -Wait: Start-Process -Wait espera tambien a los hijos que quedan residentes
 # (OfficeC2RClient, iManageStayExec...) y el wrapper no terminaba nunca.
 $p = Start-Process -FilePath powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"$cmd`"" -PassThru -RedirectStandardOutput "$run\deploy_console.txt" -RedirectStandardError "$run\deploy_stderr.txt"
+$null = $p.Handle   # sin esto ExitCode queda vacio con Start-Process -PassThru
 $p.WaitForExit()
 $sec = [int]$sw.Elapsed.TotalSeconds
 if ($Profile) { New-Item -ItemType File -Path "$run\stop_trace" -Force | Out-Null; Start-Sleep -Seconds 3 }
