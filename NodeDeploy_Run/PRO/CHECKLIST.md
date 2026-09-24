@@ -24,7 +24,7 @@ Resultado esperado: TODOS `Status=Running, StartType=Automatic`.
     'C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE',
     'C:\Program Files\iManage\iManage Drive\iManageDrive.exe',
     'C:\Program Files\Google\Chrome\Application\chrome.exe',
-    'C:\Program Files\AutoFirma\AutoFirma.exe',
+    'C:\Program Files\Autofirma\Autofirma\Autofirma.exe',
     'C:\Program Files\Bit4id\Universal MW\bin\bit4xpki.exe',
     'C:\Program Files\Mitel\Connect Client\ConnectAgent.exe',
     'C:\Program Files\Wondershare\PDFelement\PDFelement.exe',
@@ -39,7 +39,7 @@ Resultado esperado: TODOS `Status=Running, StartType=Automatic`.
 
 ```powershell
 $keys = @('iManage Work','iManage Drive','iManage Agent',
-          'Microsoft 365','Cortex XDR','ESET','AnyDesk','AqNet',
+          'Microsoft 365','Aplicaciones de Microsoft 365','Cortex XDR','ESET','AnyDesk','AqNet',
           'Nebula','AutoFirma','Bit4id','Chrome','PDFelement','Mitel')
 $installed = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
                               'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' `
@@ -124,8 +124,8 @@ ESET Mgmt Agent debería aparecer en la consola ESMC/PROTECT Cloud en ~5 min:
 .\Validate.ps1
 ```
 
-Si reporta `OK=15  PARTIAL=0  MISSING=0`, todo está validado.
+Si reporta `MISSING=0` (las apps saltadas a propósito salen como `SKIPPED`), todo está validado.
 
 ---
 
-_Generado: NodeDeploy PRO v4.0_
+_NodeDeploy PRO v5.0 — Outlook clásico = OUTLOOK.EXE junto al Word de fábrica; AV opcional con -SkipAV (laboratorio)._

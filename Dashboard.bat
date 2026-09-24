@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  NodeDeploy PRO v4.2 - Abrir Dashboard HTML
+REM  NodeDeploy PRO v5 - Abrir Dashboard HTML (documento historico v4.2; vigente: INDEX.md)
 REM ============================================================
 setlocal
 set "ROOT=%~dp0"

@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  NodeDeploy PRO v4.2 - Root shortcut launcher
+REM  NodeDeploy PRO v5 - Root shortcut launcher (acepta los mismos parametros que Deploy.bat)
 REM  Delega a NodeDeploy_Run\PRO\Deploy.bat
 REM ============================================================
 setlocal

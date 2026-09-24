@@ -1,5 +1,11 @@
 <Configuration ID="NodeDeploy-Office-Core-For-iManage">
   <!--
+    v5 (2026-09-24): este XML YA NO se usa por defecto. Los Lenovo traen Microsoft 365 de fabrica;
+    Deploy.ps1 solo anade Outlook clasico (OutlookRetail, Version=MatchInstalled) con un XML generado
+    en runtime (state\logs\outlook_classic.xml). Este fichero solo se usa con -InstallFullOffice
+    en equipos SIN Word.
+  -->
+  <!--
     Microsoft 365 Apps for Enterprise — perfil minimo compatible con iManage Work Desktop 10.9.x.
     iManage Work Desktop REQUIERE Word presente (detect MSI/C2R) ademas de Outlook.
     Por eso este XML incluye Word + Excel + PowerPoint + Outlook (core productivity stack).

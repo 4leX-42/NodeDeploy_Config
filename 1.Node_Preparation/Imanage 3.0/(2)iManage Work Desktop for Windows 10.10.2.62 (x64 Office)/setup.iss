@@ -1,0 +1,23 @@
+[InstallShield Silent]
+Version=v7.00
+File=Response File
+[File Transfer]
+OverwrittenReadOnly=NoToAll
+[{87B9416E-30A1-46FD-9FBA-1D4DC33D923F}-DlgOrder]
+Dlg0={87B9416E-30A1-46FD-9FBA-1D4DC33D923F}-SdWelcome-0
+Count=3
+Dlg1={87B9416E-30A1-46FD-9FBA-1D4DC33D923F}-SdLicense2Rtf-0
+Dlg2={87B9416E-30A1-46FD-9FBA-1D4DC33D923F}-SdFinish-0
+[{87B9416E-30A1-46FD-9FBA-1D4DC33D923F}-SdWelcome-0]
+Result=1
+[{87B9416E-30A1-46FD-9FBA-1D4DC33D923F}-SdLicense2Rtf-0]
+Result=1
+[Application]
+Name=Work
+Version=10.9.0.3
+Company=iManage
+Lang=0409
+[{87B9416E-30A1-46FD-9FBA-1D4DC33D923F}-SdFinish-0]
+Result=1
+bOpt1=0
+bOpt2=0

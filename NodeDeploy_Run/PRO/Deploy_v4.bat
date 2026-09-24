@@ -1,18 +1,13 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 REM ============================================================
-REM  NodeDeploy PRO v5 - Launcher
+REM  NodeDeploy PRO v4.2.11 (RESPALDO) - Launcher .bat (Office en background paralelo)
 REM  Uso:
-REM     Deploy.bat                     -> full deploy (default)
-REM     Deploy.bat probe               -> solo inventario de ficheros, no instala
-REM     Deploy.bat validate            -> solo post-validate
-REM     Deploy.bat resume              -> reintenta lo pendiente (post-reboot)
-REM     Deploy.bat cleanup             -> mata procesos iManage residuales
-REM  Parametros extra (se pasan tal cual a Deploy.ps1), p.ej.:
-REM     Deploy.bat full -SkipAV              (sin ESET / Cortex: laboratorio)
-REM     Deploy.bat full -InstallFullOffice   (equipo SIN Office de fabrica)
-REM     Deploy.bat full -Serial              (sin carriles paralelos, diagnostico)
-REM     Deploy.bat full -NoDefenderBoost     (sin exclusiones temporales de Defender)
+REM     Deploy.bat              -> full deploy (default)
+REM     Deploy.bat probe        -> sólo fingerprint, no instala
+REM     Deploy.bat validate     -> sólo post-validate
+REM     Deploy.bat resume       -> reintenta lo pendiente (post-reboot)
+REM     Deploy.bat cleanup      -> mata procesos iManage residuales
 REM
 REM  Requisitos: Windows 10/11 x64, admin, PowerShell 5.1+.
 REM ============================================================
@@ -20,62 +15,42 @@ REM ============================================================
 set "SCRIPT_DIR=%~dp0"
 if "%SCRIPT_DIR:~-1%"=="\" set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 
-set "DEPLOY_PS1=%SCRIPT_DIR%\Deploy.ps1"
+set "DEPLOY_PS1=%SCRIPT_DIR%\Deploy_v4.ps1"
 set "VALIDATE_PS1=%SCRIPT_DIR%\Validate.ps1"
 set "STATE_DIR=%SCRIPT_DIR%\..\state"
-set "ALL_ARGS=%*"
-
-REM ---- Fase = primer argumento salvo que empiece por '-' ----
-REM (las etiquetas no pueden ir dentro de bloques entre parentesis)
 set "PHASE=%~1"
-set "EXTRA="
-if "%PHASE%"=="" (
-    set "PHASE=full"
-    goto :args_done
-)
-if "%PHASE:~0,1%"=="-" (
-    set "PHASE=full"
-    set "EXTRA=%*"
-    goto :args_done
-)
-:collect
-shift
-if "%~1"=="" goto :args_done
-set "EXTRA=!EXTRA! %1"
-goto :collect
-:args_done
+if "%PHASE%"=="" set "PHASE=full"
 
+REM ---- Validar fase ----
 set "VALID_PHASE=0"
 for %%P in (full probe install validate resume cleanup) do (
     if /I "%PHASE%"=="%%P" set "VALID_PHASE=1"
 )
 if "%VALID_PHASE%"=="0" (
     echo [ERROR] Fase invalida: %PHASE%
-    echo Uso: %~nx0 [full^|probe^|install^|validate^|resume^|cleanup] [-SkipAV] [-InstallFullOffice] [-Serial]
+    echo Uso: %~nx0 [full^|probe^|install^|validate^|resume^|cleanup]
     exit /b 99
 )
 
+REM ---- Banner ----
 echo.
 echo ============================================================
-echo   NodeDeploy PRO v5   Phase: %PHASE% %EXTRA%
+echo   NodeDeploy PRO v4.2.11 (RESPALDO)   Phase: %PHASE%
 echo   Equipo: %COMPUTERNAME%   Usuario: %USERNAME%
 echo   Fecha: %DATE% %TIME%
 echo ============================================================
 echo.
 
-REM ---- Admin (si no, relanza con UAC conservando TODOS los argumentos) ----
+REM ---- Comprobar admin (intenta abrir HKLM\SOFTWARE en modo escritura) ----
 net session >nul 2>&1
 if errorlevel 1 (
     echo [INFO] Sin privilegios de administrador. Solicitando elevacion UAC...
-    if defined ALL_ARGS (
-        powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList '%ALL_ARGS%' -Verb RunAs"
-    ) else (
-        powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
-    )
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList '%PHASE%' -Verb RunAs"
     exit /b 0
 )
 echo [OK] Permisos administrativos confirmados.
 
+REM ---- Comprobar PowerShell ----
 where powershell >nul 2>&1
 if errorlevel 1 (
     echo [FATAL] powershell.exe no encontrado en PATH
@@ -84,11 +59,13 @@ if errorlevel 1 (
 for /f "tokens=*" %%V in ('powershell -NoProfile -Command "$PSVersionTable.PSVersion.ToString()"') do set "PS_VER=%%V"
 echo [INFO] PowerShell version: !PS_VER!
 
+REM ---- Comprobar Deploy.ps1 ----
 if not exist "%DEPLOY_PS1%" (
     echo [FATAL] No se encontro Deploy.ps1 en %SCRIPT_DIR%
     exit /b 2
 )
 
+REM ---- Routing ----
 if /I "%PHASE%"=="validate" (
     echo [STEP] Ejecutando Validate.ps1 ...
     powershell -NoProfile -ExecutionPolicy Bypass -File "%VALIDATE_PS1%" -StatePath "%STATE_DIR%"
@@ -96,12 +73,13 @@ if /I "%PHASE%"=="validate" (
     goto :SHOW_RESULT
 )
 
-echo [STEP] Ejecutando Deploy.ps1 -Phase %PHASE% %EXTRA%
+echo [STEP] Ejecutando Deploy.ps1 Phase=%PHASE% ...
 echo [INFO] Log en: %STATE_DIR%\logs\Deploy_yyyyMMdd_HHmmss.log
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%DEPLOY_PS1%" -Phase %PHASE% -StatePath "%STATE_DIR%" %EXTRA%
+powershell -NoProfile -ExecutionPolicy Bypass -File "%DEPLOY_PS1%" -Phase %PHASE% -StatePath "%STATE_DIR%"
 set "RC=!ERRORLEVEL!"
 
+REM ---- Si fue 'full' o 'install' y termino sin reboot, ejecutar Validate ----
 if "!RC!"=="0" (
     if /I not "%PHASE%"=="probe" (
         if /I not "%PHASE%"=="cleanup" (
@@ -137,23 +115,26 @@ if "!RC!"=="0" (
 )
 echo ============================================================
 echo   Reportes y logs en: %STATE_DIR%
-echo   - POSTVALIDATE_REPORT.md  (resumen + cronograma por app)
+echo   - POSTVALIDATE_REPORT.md  (resumen instalacion)
 echo   - Validate_Report.md      (smoke tests)
 echo   - logs\Deploy_*.log       (log maestro)
-echo   - logs\msi_*.log / is_*.log / burn_*.log / inno_*.log / odt_outlook\
+echo   - logs\msi_*.log          (MSI verbose por app)
 echo ============================================================
 echo.
 
 if /I "%PHASE%"=="probe" goto :END
 if /I "%PHASE%"=="cleanup" goto :END
 
+REM ---- Abrir el reporte si existe ----
 set "REPORT=%STATE_DIR%\..\POSTVALIDATE_REPORT.md"
 if exist "!REPORT!" (
     echo [INFO] Abriendo reporte: !REPORT!
     start "" notepad.exe "!REPORT!"
 )
 
-REM ---- Herramientas de configuracion manual post-deploy ----
+REM ---- Lanzar herramientas de configuracion manual post-deploy ----
+REM Para full / install / resume / validate: abrir Local Users y System Properties
+REM para que admin pueda hacer ajustes finales (usuarios locales, nombre PC, dominio).
 if /I "%PHASE%"=="full"     goto :LAUNCH_TOOLS
 if /I "%PHASE%"=="install"  goto :LAUNCH_TOOLS
 if /I "%PHASE%"=="resume"   goto :LAUNCH_TOOLS
@@ -172,3 +153,4 @@ start "" sysdm.cpl
 if "!RC!"=="" set "RC=0"
 set "FINAL_RC=!RC!"
 endlocal & exit /b %FINAL_RC%
+
