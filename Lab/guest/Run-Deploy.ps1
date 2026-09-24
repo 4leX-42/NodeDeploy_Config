@@ -1,10 +1,9 @@
 <#
-    Se ejecuta DENTRO de la VM. Lanza NodeDeploy (v5 actual o v4 de referencia) como lo haria
-    un tecnico y deja resultado + artefactos en C:\LabRun.
+    Se ejecuta DENTRO de la VM. Lanza NodeDeploy v5 como lo haria un tecnico y deja resultado +
+    artefactos en C:\LabRun.
     Los AV/EDR (ESET, Cortex) siempre se excluyen: en la VM ni siquiera se copian sus instaladores.
 #>
 param(
-    [ValidateSet('v5','v4')][string]$Version = 'v5',
     [string]$ExtraArgs = '',
     [string]$ExtraArgsB64 = '',  # igual que ExtraArgs pero en base64 (vmrun no admite comillas)
     [switch]$Profile,
@@ -28,12 +27,8 @@ if ($HoldMsiSeconds -gt 0) {
     Start-Sleep -Seconds 3
 }
 
-$ps1 = if ($Version -eq 'v4') { "$root\NodeDeploy_Run\PRO\Deploy_v4.ps1" } else { "$root\NodeDeploy_Run\PRO\Deploy.ps1" }
-$cmd = if ($Version -eq 'v4') {
-    "& '$ps1' -Phase full -SkipApps 'ESET Management Agent','MDR Cortex XDR' $ExtraArgs; exit `$LASTEXITCODE"
-} else {
-    "& '$ps1' -Phase full -SkipAV $ExtraArgs; exit `$LASTEXITCODE"
-}
+$ps1 = "$root\NodeDeploy_Run\PRO\Deploy.ps1"
+$cmd = "& '$ps1' -Phase full -SkipAV $ExtraArgs; exit `$LASTEXITCODE"
 $sw = [Diagnostics.Stopwatch]::StartNew()
 # Sin -Wait: Start-Process -Wait espera tambien a los hijos que quedan residentes
 # (OfficeC2RClient, iManageStayExec...) y el wrapper no terminaba nunca.
@@ -44,7 +39,7 @@ $sec = [int]$sw.Elapsed.TotalSeconds
 if ($Profile) { New-Item -ItemType File -Path "$run\stop_trace" -Force | Out-Null; Start-Sleep -Seconds 3 }
 
 [pscustomobject]@{
-    version  = $Version
+    version  = 'v5'
     exit     = $p.ExitCode
     seconds  = $sec
     finished = (Get-Date -Format 'o')

@@ -42,7 +42,7 @@
 |---|---|
 | Word + Outlook clásico presentes | Nada. |
 | Word presente, Outlook ausente (**Lenovo de fábrica**) | En t=0 `OutlookClassic.exe` (instalador oficial "classic Outlook", añade el producto C2R `OutlookRetail`). Si falla → ODT `OutlookRetail` con la **misma versión, canal e idiomas** del Office instalado. `-OutlookMethod odt` para probar ODT primero. |
-| Word ausente | Error claro: el equipo no trae Office. Work Desktop queda bloqueado. Para instalar Microsoft 365 completo: `-InstallFullOffice` (usa `Sc3.0\configuration.xml` y el payload local `Office\Data`). |
+| Word ausente | Error claro: el equipo no trae Office. Work Desktop queda bloqueado. Para instalar Microsoft 365 completo: `-InstallFullOffice` (usa `1.Node_Preparation\configuration.xml` y el payload local `Office\Data`). |
 
 XML generado (ejemplo real en un equipo con Microsoft 365 for business, Current Channel):
 

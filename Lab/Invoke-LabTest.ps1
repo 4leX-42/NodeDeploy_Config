@@ -6,18 +6,17 @@
     1. Revierte la VM al snapshot (por defecto '01-lenovo-baseline': Microsoft 365 for business de
        fabrica SIN Outlook clasico, como un Lenovo nuevo).
     2. Sincroniza el repo dentro de la VM (sin instaladores de antivirus).
-    3. Lanza Deploy (v5 actual, o v4 de referencia sacado de git) con -SkipAV SIEMPRE.
+    3. Lanza Deploy v5 con -SkipAV SIEMPRE.
     4. Copia informes, logs y traza de procesos a Lab\results\<fecha>_<etiqueta>\.
     Nada se instala en el host.
 
 .EXAMPLE
-    .\Invoke-LabTest.ps1                          # v5, snapshot baseline
-    .\Invoke-LabTest.ps1 -Version v4 -Label antes # referencia v4.2.11 para comparar tiempos
-    .\Invoke-LabTest.ps1 -ExtraArgs '-Serial'     # v5 sin carriles paralelos
+    .\Invoke-LabTest.ps1                          # snapshot baseline
+    .\Invoke-LabTest.ps1 -HoldMsiSeconds 60       # con Windows Update simulado ocupando MSI
+    .\Invoke-LabTest.ps1 -ExtraArgs '-Serial'     # sin carriles paralelos
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('v5','v4')][string]$Version = 'v5',
     [string]$Snapshot = '01-lenovo-baseline',
     [string]$ExtraArgs = '',
     [string]$Label,
@@ -29,7 +28,7 @@ param(
 
 . (Join-Path $PSScriptRoot 'LabCommon.ps1')
 $cfg = Get-LabConfig
-if (-not $Label) { $Label = $Version }
+if (-not $Label) { $Label = 'v5' }
 $resDir = Join-Path $Script:LabRoot ("results\{0}_{1}" -f (Get-Date -Format 'yyyyMMdd_HHmmss'), $Label)
 New-Item -ItemType Directory -Force -Path $resDir | Out-Null
 $t0 = Get-Date
@@ -48,22 +47,15 @@ $sync = Invoke-LabGuestScript -Config $cfg -ScriptPath (Join-Path $Script:LabRoo
 if ($sync.ExitCode -ne 0) { throw "Sync fallo (exit $($sync.ExitCode))" }
 Write-LabLog 'Repo sincronizado en C:\nodedeploy (sin instaladores AV)' 'OK'
 
-if ($Version -eq 'v4') {
-    # Referencia: Deploy.ps1 de v4.2.11 tal y como esta en git (HEAD antes de v5).
-    $v4 = Join-Path $Script:LabRoot '_build\Deploy_v4.ps1'
-    # cmd > fichero: bytes tal cual (evita que PowerShell recodifique los acentos UTF-8).
-    & cmd.exe /c "git -C `"$($Script:RepoRoot)`" show b1594b0:NodeDeploy_Run/PRO/Deploy.ps1 > `"$v4`""
-    if (-not (Test-Path $v4) -or (Get-Item $v4).Length -lt 10000) { throw 'No se pudo extraer Deploy.ps1 v4 de git (commit b1594b0)' }
-    Copy-ToLabGuest -Config $cfg -HostPath $v4 -GuestPath 'C:\nodedeploy\NodeDeploy_Run\PRO\Deploy_v4.ps1'
-}
 Copy-ToLabGuest -Config $cfg -HostPath (Join-Path $Script:LabRoot 'guest\Watch-Processes.ps1') -GuestPath 'C:\LabRun\Watch-Processes.ps1'
 Copy-ToLabGuest -Config $cfg -HostPath (Join-Path $Script:LabRoot 'guest\Hold-MsiMutex.ps1') -GuestPath 'C:\LabRun\Hold-MsiMutex.ps1'
 
-$argLine = "-Version $Version"
-if ($ExtraArgs) { $argLine += ' -ExtraArgsB64 ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($ExtraArgs)) }
-if ($Profile)   { $argLine += ' -Profile' }
-if ($HoldMsiSeconds -gt 0) { $argLine += " -HoldMsiSeconds $HoldMsiSeconds" }
-Write-LabLog "Lanzando Deploy $Version $ExtraArgs dentro de la VM (sesion interactiva)..." 'STEP'
+$argParts = @()
+if ($ExtraArgs) { $argParts += '-ExtraArgsB64 ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($ExtraArgs)) }
+if ($Profile)   { $argParts += '-Profile' }
+if ($HoldMsiSeconds -gt 0) { $argParts += "-HoldMsiSeconds $HoldMsiSeconds" }
+$argLine = $argParts -join ' '
+Write-LabLog "Lanzando Deploy v5 $ExtraArgs dentro de la VM (sesion interactiva)..." 'STEP'
 $run = Invoke-LabGuestScript -Config $cfg -ScriptPath (Join-Path $Script:LabRoot 'guest\Run-Deploy.ps1') -ScriptArgs $argLine -Interactive
 Write-LabLog "Deploy termino exit=$($run.ExitCode)" $(if ($run.ExitCode -eq 0) { 'OK' } else { 'WARN' })
 

@@ -8,12 +8,9 @@
 *.cer
 *.bak
 
-# Logs / estado runtime
+# Logs
 *.log
 *.lock
-NodeDeploy_Run/state/logs/
-NodeDeploy_Run/state/reports/
-NodeDeploy_Run/state/*.log
 
 # Backups versionados de binarios
 *.old.*
@@ -31,16 +28,21 @@ Diag-*.txt
 # Estado local del agente
 .claude/
 
+# Salidas de cada ejecucion (se generan en el portatil; el state de v4 incluia secretos)
+NodeDeploy_Run/state/
+NodeDeploy_Run/POSTVALIDATE_REPORT.md
+NodeDeploy_Run/Validate_Report.md
+
 # Laboratorio VMware (credenciales locales y artefactos de ejecucion)
 Lab/lab.local.json
 Lab/_build/
 Lab/results/
 
+# Versiones antiguas e instaladores sin uso: solo en el disco (lo versionado sigue en el historial)
+_Archivo/
+
 # Secretos ESET (certificado de agente / token de activacion): NUNCA al repo publico
 **/install_config.ini
 **/ESET_Endpoint/install.ini
-NodeDeploy_Run/_legacy/8_ESET_Endpoint.cmd
-
-# Estado runtime completo (incluia argumentos con secretos en v4)
-NodeDeploy_Run/state/*
-!NodeDeploy_Run/state/Retest_WorkDesktop.ps1
+**/8_ESET_Endpoint.cmd
+**/nodedeploy_state.json

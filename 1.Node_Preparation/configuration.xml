@@ -17,8 +17,9 @@
     'office' en Deploy.ps1 detectara WINWORD.EXE y saltara este XML, o usara
     OutlookClassic.exe bootstrap si solo falta Outlook.
 
-    El XML antiguo Outlook-only sigue disponible en configuration_OutlookOnly.xml.bak
-    por si se necesita escenario sin Word (NO compatible con iManage Work Desktop).
+    El XML antiguo Outlook-only esta archivado en _Archivo\v3\Sc3.0\configuration_OutlookOnly.xml.bak
+    (escenario sin Word, NO compatible con iManage Work Desktop).
+    v5: este XML solo se usa con Deploy.bat full -InstallFullOffice (equipo sin Office de fabrica).
   -->
   <!--
     v4.2.9: pre-stage local en 1.Node_Preparation\Office\Data\<build>\ (~4GB con dos
@@ -28,7 +29,7 @@
     Si la carpeta Office\Data falta, ODT cae a CDN (AllowCdnFallback=TRUE).
     Channel SemiAnnualEnterprise: builds estables, payload mas cacheable.
     Updates Enabled=FALSE durante install (evita check pos-install ~30-60s).
-    Re-pre-stage: cd 1.Node_Preparation; OfficeSetup.exe /download Sc3.0\configuration.xml
+    Re-pre-stage: cd 1.Node_Preparation; OfficeSetup.exe /download configuration.xml
     (la estructura final debe ser Office\Data\<build>\... NO Office\Office\Data\...).
   -->
   <Add OfficeClientEdition="64"

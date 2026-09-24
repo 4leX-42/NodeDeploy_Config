@@ -18,10 +18,12 @@
       * Reintentos reales (-MaxRetries ya se aplica). 1618 = MSI ocupado -> espera y reintenta.
       * Dependencias explicitas (Autofirma tras Chrome, WD tras Agent Services + Outlook,
         Cortex XDR siempre el ultimo).
-      * Outlook clasico via ODT (producto OutlookRetail, Version=MatchInstalled): sin UI, con log,
-        sin actualizar toda la suite. Fallback automatico a OutlookClassic.exe.
-        Office completo solo con -InstallFullOffice.
+      * Outlook clasico en t=0 con el instalador oficial de Microsoft (OutlookClassic.exe); ODT
+        (producto OutlookRetail, Version=MatchInstalled) como plan B (-OutlookMethod odt lo invierte).
+        Office completo solo con -InstallFullOffice (1.Node_Preparation\configuration.xml).
       * iManage 3.0 (Drive 10.13.0.416, Work Desktop 10.10.2.62, Drive Native 10.6.1.15).
+        Drive y Work Desktop son InstallShield InstallScript: /s con el setup.iss junto al exe.
+      * QuickEdit de la consola desactivado al arrancar (un clic en la ventana congelaba el script).
       * Chrome Enterprise MSI offline (fallback al stub online ChromeSetup.exe).
       * PDFelement con /NOPAGE (obligatorio en silencioso segun Wondershare) y log Inno.
       * Exclusiones temporales de Defender acotadas (procesos instaladores + carpetas destino),
@@ -704,7 +706,7 @@ function New-OutlookClassicXml {
 }
 
 function Resolve-FullOfficeXml {
-    foreach ($c in @((Join-Path $Source 'Sc3.0\configuration.xml'), (Join-Path $Source 'configuration.xml'))) {
+    foreach ($c in @((Join-Path $Source 'configuration.xml'), (Join-Path $Source 'Sc3.0\configuration.xml'))) {
         if (Test-Path $c) { return (Convert-Path $c) }
     }
     return $null
