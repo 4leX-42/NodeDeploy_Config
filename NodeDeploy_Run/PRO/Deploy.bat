@@ -13,6 +13,7 @@ REM     Deploy.bat full -SkipAV              (sin ESET / Cortex: laboratorio)
 REM     Deploy.bat full -InstallFullOffice   (equipo SIN Office de fabrica)
 REM     Deploy.bat full -Serial              (sin carriles paralelos, diagnostico)
 REM     Deploy.bat full -NoDefenderBoost     (sin exclusiones temporales de Defender)
+REM     Deploy.bat full -OnlyApps Mitel+Desktop+Cortex   (solo esas apps: nombre o parte, separadas por +)
 REM
 REM  Requisitos: Windows 10/11 x64, admin, PowerShell 5.1+.
 REM ============================================================

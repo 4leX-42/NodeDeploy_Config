@@ -67,6 +67,11 @@ Work Desktop (InstallScript) tiene **dos prerrequisitos duros** que comprueba an
 2. **Office con Word y Outlook** presentes. Outlook solo NO basta.
 
 v5 lo garantiza por dependencias (`Requires = Agent Services + @office`); si no se cumplen, Work Desktop queda `blocked` con el motivo en el reporte en vez de fallar en silencio.
+
+Desde v5.0.2, además:
+- Antes de lanzar Work Desktop espera (máx. 2 min) a que Office esté **registrado** (ProgID `Word.Application`, lo que comprueba iManage). `OfficeC2RClient` no sirve de indicador: sigue activo varios minutos después de que Outlook esté listo.
+- Si aun así falla, el informe incluye el `ResultCode` del `setup.log` de InstallScript (p. ej. `-12` = el `setup.iss` no coincide con los diálogos) y las líneas `### ERROR ###` del log propio de iManage (`%TEMP%\workdesktop_*.log`); ambos logs se copian a `state\logs`.
+
 Diagnóstico adicional: `reg add "HKLM\SOFTWARE\InstallShield\29.0\Professional" /v DoVerboseLogging /t REG_DWORD /d 1 /f` y leer `%TEMP%\workdesktop_*.log`.
 
 ---
@@ -147,4 +152,4 @@ state\
 
 ---
 
-_NodeDeploy PRO v5.0.1 · 2026-09-24_
+_NodeDeploy PRO v5.0.2 · 2026-09-26_

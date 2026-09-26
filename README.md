@@ -25,6 +25,7 @@ Al terminar (full / install / resume / validate) se abren `lusrmgr.msc` y `sysdm
 | Probe (no instala) | `Deploy.bat probe` |
 | Equipo SIN Office de fábrica | `Deploy.bat full -InstallFullOffice` |
 | Sin antivirus (pruebas) | `Deploy.bat full -SkipAV` |
+| Solo algunas apps (p. ej. repetir las que fallaron) | `Deploy.bat full -OnlyApps Mitel+Desktop+Cortex` (nombre o parte, separadas por `+`) |
 | Sin paralelismo (diagnóstico) | `Deploy.bat full -Serial` |
 | Sin exclusiones temporales de Defender | `Deploy.bat full -NoDefenderBoost` |
 | Cleanup procesos iManage | `Deploy.bat cleanup` |
@@ -114,4 +115,4 @@ nodedeploy\
 
 ---
 
-_Última actualización: 2026-09-24 — NodeDeploy PRO v5.0.1_
+_Última actualización: 2026-09-26 — NodeDeploy PRO v5.0.2_
