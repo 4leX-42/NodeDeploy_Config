@@ -53,8 +53,8 @@ Resultados en `Lab\results\<fecha>_<etiqueta>\`: `POSTVALIDATE_REPORT.md` (crono
 
 ### Con el M.2 desconectado
 
-`.\Update-LabMirror.ps1` copia el repo a `C:\NodeDeployLabSrc` (sin antivirus, `_Archivo` ni el payload de Office).
-Después ejecuta los mismos scripts desde `C:\NodeDeployLabSrc\Lab`.
+Ejecuta los mismos scripts desde la copia completa del PC (`C:\testeo2.0\1.Node_deployMain\Lab`): la carpeta
+compartida de la VM sigue a la copia desde la que se lanza la prueba. `lab.local.json` va en el `Lab\` de esa copia.
 
 ## Detalles
 
@@ -65,4 +65,4 @@ Después ejecuta los mismos scripts desde `C:\NodeDeployLabSrc\Lab`.
 - Dentro de la VM el UAC está desactivado (solo laboratorio) para que `vmrun` tenga token de administrador completo.
 - Windows Update está pausado en la VM para que los tiempos sean comparables entre pruebas.
 - `guest\Extract-iManage3.ps1` / `guest\Extract-WDSetupIss.ps1`: sacan el `setup.iss` de un paquete iManage nuevo (si cambia la versión).
-- Borrar el laboratorio: apagar la VM y eliminar `Documentos\Virtual Machines\NodeDeploy-Lab`, `Lab\lab.local.json` y `C:\NodeDeployLabSrc`.
+- Borrar el laboratorio: apagar la VM y eliminar `Documentos\Virtual Machines\NodeDeploy-Lab` y `Lab\lab.local.json`.

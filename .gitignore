@@ -28,6 +28,10 @@ Diag-*.txt
 # Estado local del agente
 .claude/
 
+# Iconos de carpeta / miniaturas de Windows
+desktop.ini
+Thumbs.db
+
 # Salidas de cada ejecucion (se generan en el portatil; el state de v4 incluia secretos)
 NodeDeploy_Run/state/
 NodeDeploy_Run/POSTVALIDATE_REPORT.md

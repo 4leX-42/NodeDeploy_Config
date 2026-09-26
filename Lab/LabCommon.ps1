@@ -127,7 +127,7 @@ function Invoke-LabGuestScript {
 
 function Set-LabShareToRepo {
     # La carpeta compartida sigue a la copia del repo desde la que se ejecuta el lab
-    # (p.ej. C:\NodeDeployLabSrc si el M.2 no esta conectado). Requiere VMware Tools.
+    # (p.ej. la copia del PC si el M.2 no esta conectado). Requiere VMware Tools.
     param($Config)
     Invoke-Vmrun -Arguments @('setSharedFolderState', $Config.VmxPath, $Config.SharedFolder, $Script:RepoRoot, 'readonly') -AllowFail | Out-Null
 }
