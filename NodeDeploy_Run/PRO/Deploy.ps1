@@ -44,6 +44,9 @@
     activado -> 'usuario' fuera de Administradores -> union al dominio (lo ultimo).
     -Domain <nombre|no> responde la primera pregunta; -NoFinalize omite todo el cierre.
 
+    v5.2.0: PDF24 Creator, Everything y dnGrep (MSI) + NanaZip (MSIX con DISM, para todos los
+    usuarios). Nombres de instalador con comodin: para actualizar basta con sustituir el fichero.
+
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
     probe    -> solo inventario de ficheros
@@ -89,7 +92,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.1.0'
+$Script:Version       = '5.2.0'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -368,6 +371,14 @@ function Test-AppInstalled {
         $ok = $os.Word -and $os.Outlook
         return @{ Installed = $ok; Evidence = @($(if ($os.Word) { "file:WINWORD.EXE($($os.Arch))" }), $(if ($os.Outlook) { "file:OUTLOOK.EXE($($os.Arch))" }) | Where-Object { $_ }); Version = $null }
     }
+    if ($App.AppxName) {
+        # MSIX: aprovisionado para todos los usuarios (o ya instalado en algun perfil).
+        $prov = @(Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq $App.AppxName })
+        if ($prov) { return @{ Installed = $true; Evidence = @("appx-provisioned:$($App.AppxName) v$($prov[0].Version)"); Version = $prov[0].Version } }
+        $usr = @(Get-AppxPackage -AllUsers -Name $App.AppxName -ErrorAction SilentlyContinue)
+        if ($usr) { return @{ Installed = $true; Evidence = @("appx:$($App.AppxName) v$($usr[0].Version)"); Version = $usr[0].Version } }
+        return @{ Installed = $false; Evidence = @(); Version = $null }
+    }
     return Test-InstalledStrict -Keywords $App.Detect -ServiceNames $App.ServiceNames -FilePaths $App.FilePaths -ExcludeDetect $App.ExcludeDetect -Refresh:$Refresh
 }
 
@@ -588,6 +599,26 @@ $Script:Apps = @(
         Boost=@{ Processes=@('iManageWorkDesktopforWindowsx64.exe','ISBEW64.exe'); Paths=@("$env:ProgramFiles\iManage","${env:ProgramFiles(x86)}\iManage") }
     },
     [pscustomobject]@{
+        # WiX, por equipo. LAUNCHAPPONEXIT=0: que no abra dnGrep al terminar.
+        Name='dnGrep'; File='dnGREP.*.x64.msi'; Type='msi'; Lane='msi'; Order=110; Timeout=600
+        MsiExtra='LAUNCHAPPONEXIT=0'
+        Detect=@('dnGrep'); FilePaths=@("$env:ProgramFiles\dnGREP\dnGREP.exe")
+    },
+    [pscustomobject]@{
+        # Propiedades documentadas por voidtools (EVERYTHING_SERVICE, START_ON_STARTUP, *_SHORTCUT...) valen 1
+        # por defecto: servicio + arranque con Windows + accesos directos. 1.4.1.1031+ arranca el servicio en /qn.
+        Name='Everything'; File='Everything-*.x64.msi'; Type='msi'; Lane='msi'; Order=120; Timeout=300
+        Detect=@('Everything'); ServiceNames=@('Everything'); FilePaths=@("$env:ProgramFiles\Everything\Everything.exe")
+    },
+    [pscustomobject]@{
+        # ~500 MB. AUTOUPDATE=No (sin avisos de actualizacion a usuarios sin admin), REGISTERREADER=No (no se
+        # registra como lector PDF: no compite con PDFelement). La impresora de fax ya viene desactivada.
+        Name='PDF24 Creator'; File='pdf24-creator-*-x64.msi'; Type='msi'; Lane='msi'; Order=130; Timeout=900
+        MsiExtra='AUTOUPDATE=No REGISTERREADER=No'
+        Detect=@('PDF24 Creator','PDF24'); FilePaths=@("$env:ProgramFiles\PDF24\pdf24.exe")
+        Boost=@{ Paths=@("$env:ProgramFiles\PDF24") }
+    },
+    [pscustomobject]@{
         # Siempre el ultimo: su monitor de comportamiento bloquea el runtime InstallScript de iManage.
         Name='MDR Cortex XDR'; File='MDR_Windows_Andersen_8_2_x64.msi'; Type='msi'; Lane='msi'; Order=999; Timeout=900
         AfterAll=$true; MsiExtra='REBOOT=ReallySuppress'
@@ -619,6 +650,11 @@ $Script:Apps = @(
         Detect=@('Autofirma','AutoFirma')
         FilePaths=@("$env:ProgramFiles\Autofirma\Autofirma\Autofirma.exe","$env:ProgramFiles\AutoFirma\AutoFirma.exe")
         Boost=@{ Processes=@('Autofirma_64_v1_9_installer.exe'); Paths=@("$env:ProgramFiles\Autofirma") }
+    },
+    [pscustomobject]@{
+        # MSIX (Windows 10 2004+): aprovisionado para todos los usuarios; cada perfil lo recibe al iniciar sesion.
+        Name='NanaZip'; File='NanaZip_*.msixbundle'; Type='appx'; Lane='exe'; Order=40; Timeout=300
+        AppxName='40174MouriNaruto.NanaZip'
     }
 )
 
@@ -628,6 +664,7 @@ $Script:DryRunSeconds = @{
     'Google Chrome'=30; 'MitelConnect'=61; 'iManage Agent Services'=9; 'iManage Drive'=53
     'iManage Drive Native'=5; 'iManage Work Desktop'=45; 'MDR Cortex XDR'=23
     'Bit4id Middleware'=35; 'PDFelement Business'=53; 'Autofirma'=36
+    'dnGrep'=20; 'Everything'=6; 'PDF24 Creator'=60; 'NanaZip'=10
 }
 #endregion
 
@@ -640,8 +677,15 @@ if (Test-Path $Script:FinalizePs1) { . $Script:FinalizePs1 }
 # ============================================================
 function Resolve-AppPath {
     param($App)
-    $rel = if ($App.Path) { $App.Path } else { $App.File }
-    return (Join-Path $Source $rel)
+    $rel  = if ($App.Path) { $App.Path } else { $App.File }
+    $full = Join-Path $Source $rel
+    if ($rel -match '[\*\?]') {
+        # Nombre con comodin (p. ej. pdf24-creator-*-x64.msi): para actualizar basta con sustituir el
+        # instalador; si hubiera varios, se usa el mas reciente.
+        $hit = Get-ChildItem -Path $full -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1
+        if ($hit) { return $hit.FullName }
+    }
+    return $full
 }
 
 function Resolve-AppDefinition {
@@ -865,6 +909,16 @@ function New-InstallCommand {
         }
         'exe' {
             $cmd.Arguments = "$($App.Args)"
+        }
+        'appx' {
+            # MSIX para todos los usuarios con DISM (codigos de salida fiables; no usa Windows Installer).
+            # Licencia: el .xml con el mismo nombre que el paquete; si no hay, /SkipLicense.
+            # /Region:all: sin el, Windows solo aprovisiona las apps ancladas en el menu Inicio.
+            $cmd.LogFile  = Join-Path $Script:LogDir "dism_$name.log"
+            $lic = [IO.Path]::ChangeExtension($file, '.xml')
+            $licArg = if (Test-Path $lic) { "/LicensePath:`"$lic`"" } else { '/SkipLicense' }
+            $cmd.FilePath  = Join-Path $env:SystemRoot 'System32\dism.exe'
+            $cmd.Arguments = "/Online /Add-ProvisionedAppxPackage /PackagePath:`"$file`" $licArg /Region:all /NoRestart /Quiet /LogPath:`"$($cmd.LogFile)`""
         }
         'inno' {
             $cmd.LogFile   = Join-Path $Script:LogDir "inno_$name.log"

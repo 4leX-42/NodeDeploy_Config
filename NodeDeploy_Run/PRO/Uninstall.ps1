@@ -107,8 +107,22 @@ $langs
     Write-Host "  ODT exit $($p.ExitCode)"
 }
 
+function Remove-AppxAllUsers {
+    param([string]$Name, [string]$AppxName)
+    $prov = @(Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq $AppxName })
+    $usr  = @(Get-AppxPackage -AllUsers -Name $AppxName -ErrorAction SilentlyContinue)
+    if (-not $prov -and -not $usr) { Write-Host "[SKIP] $Name (no instalado)" -ForegroundColor DarkGray; return }
+    Write-Host "[UNINSTALL] ${Name}: $AppxName" -ForegroundColor Cyan
+    foreach ($p in $prov) { Remove-AppxProvisionedPackage -Online -PackageName $p.PackageName -ErrorAction SilentlyContinue | Out-Null }
+    foreach ($u in $usr)  { Remove-AppxPackage -Package $u.PackageFullName -AllUsers -ErrorAction SilentlyContinue }
+}
+
 Write-Host '=== NodeDeploy Uninstall ===' -ForegroundColor Magenta
 if ($IncludeAV) { Uninstall-App 'MDR Cortex XDR' 'Cortex XDR' }
+Uninstall-App 'PDF24 Creator' 'PDF24 Creator' @('pdf24')
+Uninstall-App 'Everything' 'Everything' @('Everything')
+Uninstall-App 'dnGrep' 'dnGrep' @('dnGREP')
+Remove-AppxAllUsers 'NanaZip' '40174MouriNaruto.NanaZip'
 Uninstall-App 'iManage Work Desktop' 'iManage Work Desktop' @('iManageWorkDesktop','iManageStayExec','OUTLOOK','WINWORD')
 Uninstall-App 'iManage Drive Native' 'iManage Drive Native'
 Uninstall-App 'iManage Drive' 'iManage Drive' @('iManageDrive') @('Native')

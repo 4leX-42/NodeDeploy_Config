@@ -53,7 +53,11 @@ $Script:Checks = @(
     [pscustomobject]@{ App='MDR Cortex XDR';        RegKw='Cortex XDR';            Svc='cyserver';        File=@() },
     [pscustomobject]@{ App='Bit4id Middleware';     RegKw='Bit4id';                Svc=$null;             File=@("$pf\Bit4id\Universal MW\bin\bit4xpki.exe","$pf86\Bit4id\Universal MW\bin\bit4xpki.exe") },
     [pscustomobject]@{ App='PDFelement Business';   RegKw='PDFelement';            Svc=$null;             File=@("$pf\Wondershare\PDFelement\PDFelement.exe","$pf86\Wondershare\PDFelement\PDFelement.exe") },
-    [pscustomobject]@{ App='Autofirma';             RegKw='Autofirma';             Svc=$null;             File=@("$pf\Autofirma\Autofirma\Autofirma.exe","$pf\AutoFirma\AutoFirma.exe") }
+    [pscustomobject]@{ App='Autofirma';             RegKw='Autofirma';             Svc=$null;             File=@("$pf\Autofirma\Autofirma\Autofirma.exe","$pf\AutoFirma\AutoFirma.exe") },
+    [pscustomobject]@{ App='dnGrep';                RegKw='dnGrep';                Svc=$null;             File=@("$pf\dnGREP\dnGREP.exe") },
+    [pscustomobject]@{ App='Everything';            RegKw='Everything';            Svc='Everything';      File=@("$pf\Everything\Everything.exe") },
+    [pscustomobject]@{ App='PDF24 Creator';         RegKw='PDF24 Creator';         Svc=$null;             File=@("$pf\PDF24\pdf24.exe") },
+    [pscustomobject]@{ App='NanaZip';               RegKw=$null;                   Svc=$null;             File=@(); Appx='40174MouriNaruto.NanaZip' }
 )
 
 $installed = @(
@@ -73,6 +77,11 @@ foreach ($c in $Script:Checks) {
         elseif ($root -or $word) { $status = 'PARTIAL' }
         $version = $c2r.VersionToReport
         $detail = "Outlook=$([bool]$root) Word=$([bool]$word) C2R=$($c2r.ProductReleaseIds) v$version"
+    } elseif ($c.Appx) {
+        # MSIX aprovisionado para todos los usuarios (cada perfil lo recibe al iniciar sesion)
+        $prov = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq $c.Appx } | Select-Object -First 1
+        if ($prov) { $status = 'OK'; $version = $prov.Version; $detail = "aprovisionado v$version" }
+        elseif (Get-AppxPackage -AllUsers -Name $c.Appx -ErrorAction SilentlyContinue) { $status = 'PARTIAL'; $detail = 'instalado en algun perfil, no aprovisionado' }
     } else {
         $reg = $installed | Where-Object { $_.DisplayName -like "*$($c.RegKw)*" -and (-not $c.Exclude -or $_.DisplayName -notlike "*$($c.Exclude)*") } | Select-Object -First 1
         $svc = if ($c.Svc) { Get-Service -Name $c.Svc -ErrorAction SilentlyContinue } else { $null }

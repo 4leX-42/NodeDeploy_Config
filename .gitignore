@@ -2,6 +2,7 @@
 *.exe
 *.msi
 *.msixbundle
+NanaZip_*.xml
 *.dat
 *.lf
 *.lnk

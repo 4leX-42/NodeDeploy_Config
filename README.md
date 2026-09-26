@@ -45,10 +45,11 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
      │                                                                                     │
      ├─ Carril MSI (serializado, espera mutex _MSIExecute) ────────────────────────────────┤
      │   AnyDesk → AqNet → Nebula → ESET agent → Chrome MSI → Mitel → iManage AS →          │
-     │   iManage Drive → Drive Native → [espera Outlook] iManage Work Desktop → Cortex XDR  │
+     │   iManage Drive → Drive Native → [espera Outlook] iManage Work Desktop →             │
+     │   dnGrep → Everything → PDF24 (mientras Work Desktop espera) → Cortex XDR (último)    │
      │                                                                                     │
-     └─ Carril EXE (NSIS/Inno, en paralelo) ───────────────────────────────────────────────┘
-         Bit4id → PDFelement → Autofirma (después de Chrome)
+     └─ Carril EXE (NSIS/Inno/MSIX, en paralelo) ──────────────────────────────────────────┘
+         Bit4id → PDFelement → Autofirma (después de Chrome) → NanaZip
 ```
 
 - **Reintentos reales** (`-MaxRetries 2`): 1618 = Windows Installer ocupado (Windows Update, Lenovo Vantage, Store…) → espera y reintenta sin gastar intentos.
@@ -65,9 +66,13 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
 | iManage Drive 10.13.0.416 | InstallScript (`/s setup.iss`) — la 10.10 era WiX Burn | MSI |
 | iManage Drive Native 10.6.1.15 | WiX Burn | MSI |
 | iManage Work Desktop 10.10.2.62 | InstallScript (`/s setup.iss`) | MSI (tras Outlook) |
+| dnGrep 5.0 | MSI (`LAUNCHAPPONEXIT=0`) | MSI |
+| Everything 1.4.1 | MSI (valores por defecto: servicio + arranque con Windows + accesos directos) | MSI |
+| PDF24 Creator 11.30 | MSI (`AUTOUPDATE=No REGISTERREADER=No`: sin avisos de actualización; no se registra como lector PDF) | MSI |
 | MDR Cortex XDR | MSI | MSI (último) |
 | Bit4id Middleware, Autofirma 1.9 | NSIS | EXE |
 | PDFelement Business 10.1.5 | Inno Setup (`/NOPAGE`, log propio) | EXE |
+| NanaZip 7.0 | MSIX con DISM, para todos los usuarios (licencia `.xml` junto al paquete) | EXE |
 | Outlook clásico | `OutlookClassic.exe` (plan B: ODT `OfficeSetup.exe`) | background, t=0 |
 
 ---
@@ -79,7 +84,8 @@ nodedeploy\
 ├── Pincha_pa_instalar.bat     ← doble clic: lanza NodeDeploy_Run\PRO\Deploy.bat
 ├── README.md                  ← esta guía
 ├── 1.Node_Preparation\        ← SOLO los instaladores que usa v5
-│   ├── *.msi / *.exe            15 apps (+ ChromeSetup.exe de reserva)
+│   ├── *.msi / *.exe / *.msixbundle   19 apps (+ ChromeSetup.exe de reserva). Nombres con versión:
+│   │                            para actualizar PDF24, Everything, dnGrep o NanaZip basta con sustituir el fichero
 │   ├── install_config.ini       certificado del agente ESET (nunca va a git)
 │   ├── OutlookClassic.exe       Outlook clásico (instalador de Microsoft)
 │   ├── OfficeSetup.exe          ODT: plan B de Outlook y Office completo (-InstallFullOffice)
@@ -118,4 +124,4 @@ nodedeploy\
 
 ---
 
-_Última actualización: 2026-09-26 — NodeDeploy PRO v5.1.0_
+_Última actualización: 2026-09-26 — NodeDeploy PRO v5.2.0_

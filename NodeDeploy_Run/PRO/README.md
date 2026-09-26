@@ -34,6 +34,8 @@
 | 12 | Secretos ESET enmascarados en log y state | `P_CERT_*` y passwords ya no se escriben en claro. |
 | 13 | `-DryRun` | Simula instaladores (no instala nada) para probar el planificador en cualquier PC. |
 | 14 | `Uninstall.ps1` arreglado | No parseaba (error de sintaxis) y habría quitado `O365ProPlusRetail`; ahora solo quita `OutlookRetail`. |
+| 15 | **v5.1: cierre del equipo** (`Finalize.ps1`) | Administrador local, `usuario` fuera de Administradores y dominio, preguntados al arrancar y aplicados al final si todo queda OK. |
+| 16 | **v5.2: PDF24 Creator, Everything, dnGrep** (MSI) y **NanaZip** (MSIX con DISM, para todos los usuarios) | Nuevas apps del catálogo. Los nombres de instalador admiten comodín: para actualizar basta con sustituir el fichero. |
 
 ---
 
@@ -175,4 +177,4 @@ state\
 
 ---
 
-_NodeDeploy PRO v5.1.0 · 2026-09-26_
+_NodeDeploy PRO v5.2.0 · 2026-09-26_

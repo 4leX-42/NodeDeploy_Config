@@ -29,10 +29,19 @@ Resultado esperado: TODOS `Status=Running, StartType=Automatic`.
     'C:\Program Files\Mitel\Connect Client\ConnectAgent.exe',
     'C:\Program Files\Wondershare\PDFelement\PDFelement.exe',
     'C:\Program Files\Vintegris\nebulaCERTagent\nebulaCERTagent.exe',
-    'C:\Program Files\ESET\RemoteAdministrator\Agent\ERAAgent.exe'
+    'C:\Program Files\ESET\RemoteAdministrator\Agent\ERAAgent.exe',
+    'C:\Program Files\dnGREP\dnGREP.exe',
+    'C:\Program Files\Everything\Everything.exe',
+    'C:\Program Files\PDF24\pdf24.exe'
 ) | ForEach-Object {
     if (Test-Path $_) { "OK  $_" } else { "MISS $_" }
 }
+```
+
+NanaZip (MSIX, aprovisionado para todos los usuarios):
+
+```powershell
+Get-AppxProvisionedPackage -Online | Where-Object DisplayName -eq '40174MouriNaruto.NanaZip' | Format-Table DisplayName,Version
 ```
 
 ## Registry Uninstall keys
@@ -40,7 +49,7 @@ Resultado esperado: TODOS `Status=Running, StartType=Automatic`.
 ```powershell
 $keys = @('iManage Work','iManage Drive','iManage Agent',
           'Microsoft 365','Aplicaciones de Microsoft 365','Cortex XDR','ESET','AnyDesk','AqNet',
-          'Nebula','AutoFirma','Bit4id','Chrome','PDFelement','Mitel')
+          'Nebula','AutoFirma','Bit4id','Chrome','PDFelement','Mitel','dnGrep','Everything','PDF24')
 $installed = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
                               'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' `
                               -ErrorAction SilentlyContinue
