@@ -1,0 +1,9 @@
+# Saltos de linea de Windows al descargar/clonar (tambien en el ZIP de GitHub).
+# Los .bat/.cmd DEBEN ir con CRLF: con LF cmd.exe puede no encontrar etiquetas (goto/call).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.md  text eol=crlf
+*.xml text eol=crlf
+*.iss text eol=crlf
+*.json text eol=crlf
