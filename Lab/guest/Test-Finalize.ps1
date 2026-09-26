@@ -38,6 +38,15 @@ try {
     Out-Check 'usuario fuera de Administradores' (-not (Test-UsuarioAdmin))
     Out-Check 'sin reinicio pendiente (sin dominio)' (-not $state.reboot_required)
 
+    # Relanzar el script en un equipo ya terminado: no debe volver a pedir la contraseña del Administrador
+    function Read-Host { throw 'Read-Host: no deberia preguntar nada' }
+    $ans = Read-FinalizeAnswers -Domain 'no'
+    Out-Check 'relanzar: no pide la contraseña del Administrador' ([bool]$ans.AdminReady -and -not $ans.AdminPassword)
+    $r4 = Invoke-Finalize -Answers $ans -State $state -StandardUser 'usuario'
+    $r4.GetEnumerator() | ForEach-Object { Add-Content -Path $out -Value "   R) $($_.Key): $($_.Value)" }
+    Out-Check 'relanzar: Administrador ya estaba activado' ("$($r4['Administrador local'])" -like '*ya estaba activado*')
+    Remove-Item -Path function:\Read-Host
+
     $r2 = Invoke-Finalize -Answers @{ Domain = $null; DomainCredential = $null; AdminPassword = $pw } -State $state -StandardUser 'usuario'
     $r2.GetEnumerator() | ForEach-Object { Add-Content -Path $out -Value "   2) $($_.Key): $($_.Value)" }
     Out-Check 'segunda pasada idempotente' ("$($r2['Usuario estandar'])" -like '*ya no era administrador*')

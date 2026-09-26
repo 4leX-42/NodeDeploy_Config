@@ -85,6 +85,19 @@ Get-LocalGroupMember -SID S-1-5-32-544 | Format-Table Name,PrincipalSource      
 (Get-CimInstance Win32_ComputerSystem) | Format-List Domain,PartOfDomain            # dominio tras reiniciar
 ```
 
+## Arranque y optimización
+
+Mira la sección **Optimizacion de Windows** de `POSTVALIDATE_REPORT.md`, o a mano (Administrador de tareas → Aplicaciones de arranque):
+
+- Deshabilitados: Bit4id Notifications (b4notify), Everything, PDF24, Wondershare PEScreenshot / PEToolbox.
+- Habilitado: AnyDesk (y su servicio en Automático / En ejecución).
+
+```powershell
+Get-Service 'AnyDesk*' | Format-Table Name,StartType,Status
+Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Edge' | Select-Object StartupBoostEnabled,BackgroundModeEnabled   # 0 / 0
+fsutil behavior query DisableDeleteNotify   # NTFS ... = 0 -> TRIM activo
+```
+
 ## Reboot recommendation
 
 Tras instalación de:
@@ -147,4 +160,4 @@ Si reporta `MISSING=0` (las apps saltadas a propósito salen como `SKIPPED`), to
 
 ---
 
-_NodeDeploy PRO v5.1 — Outlook clásico = OUTLOOK.EXE junto al Word de fábrica; AV opcional con -SkipAV (laboratorio)._
+_NodeDeploy PRO v5.3 — Outlook clásico = OUTLOOK.EXE junto al Word de fábrica; AV opcional con -SkipAV (laboratorio)._

@@ -98,6 +98,15 @@ Las contraseñas solo están en memoria: no van a log, state ni informe. El resu
 
 ---
 
+## Optimización de Windows (v5.3, `Optimize.ps1`)
+
+- **Segundo plano desde t=0** (no alarga el despliegue): quita las apps de Store que sobran (lista `$Script:DebloatApps` al principio del fichero) para usuarios actuales y futuros, y aplica directivas contra publicidad, apps que se instalan solas, sugerencias de Bing, widgets y chat (equipo + usuario actual + perfil por defecto). Nunca toca Store, Calculadora, Fotos, Terminal, códecs, winget, apps de Lenovo ni NanaZip.
+- **Al final:** "Aplicaciones de arranque" con PDFelement, PDF24, Everything y b4notify **deshabilitados** (mismo sitio que el Administrador de tareas, en HKLM: un usuario sin admin no puede reactivarlos); Edge sin startup boost ni segundo plano (directiva); AnyDesk obligatorio (servicio automático y en marcha, reinicio si se cae, entrada habilitada y sin botón Desinstalar). Los servicios de PDF24 (impresora) y Everything (índice) se mantienen.
+- **Comprobaciones en el informe:** TRIM, software del fabricante a revisar (no se desinstala solo; Lenovo se respeta), lo que sigue arrancando con Windows; se lanza la búsqueda de Windows Update sin esperar.
+- El registro se vuelca a disco nada más aplicar los cambios (un apagado brusco justo después los perdía; visto en el laboratorio).
+
+---
+
 ## Modos y parámetros
 
 | Comando | Acción |
@@ -126,6 +135,7 @@ Los parámetros extra se pasan tal cual a `Deploy.ps1` (`Deploy.bat full -SkipAV
 | `-Domain nombre` / `-Domain no` | Responde de antemano la pregunta del dominio. |
 | `-StandardUser nombre` | Cuenta que sale de Administradores (default `usuario`). |
 | `-NoFinalize` | Sin preguntas ni cierre del equipo (laboratorio / pruebas). |
+| `-NoOptimize` | Sin optimización de Windows (`Optimize.ps1`: limpieza de apps, publicidad, arranque, TRIM, Windows Update). |
 
 ---
 
@@ -177,4 +187,4 @@ state\
 
 ---
 
-_NodeDeploy PRO v5.2.0 · 2026-09-26_
+_NodeDeploy PRO v5.3.0 · 2026-09-26_

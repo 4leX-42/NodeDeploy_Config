@@ -47,6 +47,12 @@
     v5.2.0: PDF24 Creator, Everything y dnGrep (MSI) + NanaZip (MSIX con DISM, para todos los
     usuarios). Nombres de instalador con comodin: para actualizar basta con sustituir el fichero.
 
+    v5.3.0: Optimize.ps1. Limpieza en segundo plano desde t=0 (apps de Store sobrantes, publicidad,
+    Bing, widgets, chat; tambien para usuarios nuevos). Al final: PDFelement, PDF24, Everything, b4notify
+    y Edge sin arrancar con Windows; AnyDesk obligatorio (servicio automatico + sin Desinstalar);
+    TRIM, software del fabricante a revisar y busqueda de Windows Update. -NoOptimize lo omite.
+    Cierre del equipo: no vuelve a preguntar lo ya hecho (Administrador activado, equipo en dominio).
+
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
     probe    -> solo inventario de ficheros
@@ -79,7 +85,8 @@ param(
     # Cierre del equipo (Finalize.ps1): se pregunta al arrancar y se aplica al final si todo queda OK.
     [string]$Domain,                     # nombre del dominio o 'no' (si se omite, se pregunta)
     [string]$StandardUser = 'usuario',   # cuenta que sale del grupo Administradores
-    [switch]$NoFinalize                  # sin preguntas ni cierre (laboratorio / reintentos)
+    [switch]$NoFinalize,                 # sin preguntas ni cierre (laboratorio / reintentos)
+    [switch]$NoOptimize                  # sin optimizacion de Windows (Optimize.ps1)
 )
 
 # ============================================================
@@ -92,7 +99,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.2.0'
+$Script:Version       = '5.3.0'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -671,6 +678,9 @@ $Script:DryRunSeconds = @{
 # Cierre del equipo (Administrador local, usuario estandar, dominio)
 $Script:FinalizePs1 = Join-Path $Script:ScriptDir 'Finalize.ps1'
 if (Test-Path $Script:FinalizePs1) { . $Script:FinalizePs1 }
+# Optimizacion de Windows (apps de Store sobrantes, publicidad, arranque, TRIM, Windows Update)
+$Script:OptimizePs1 = Join-Path $Script:ScriptDir 'Optimize.ps1'
+if (Test-Path $Script:OptimizePs1) { . $Script:OptimizePs1 }
 
 # ============================================================
 #region PATHS / OFFICE HELPERS
@@ -1493,6 +1503,12 @@ function Write-FinalReport {
         foreach ($k in $Script:FinalizeResult.Keys) { [void]$sb.AppendLine("- **${k}:** $($Script:FinalizeResult[$k])") }
         [void]$sb.AppendLine('')
     }
+    if ($Script:OptimizeResult) {
+        [void]$sb.AppendLine('## Optimizacion de Windows')
+        [void]$sb.AppendLine('')
+        foreach ($k in $Script:OptimizeResult.Keys) { [void]$sb.AppendLine("- **${k}:** $($Script:OptimizeResult[$k])") }
+        [void]$sb.AppendLine('')
+    }
     [void]$sb.AppendLine('## Detalle y cronograma')
     [void]$sb.AppendLine('')
     [void]$sb.AppendLine('| App | Carril | Estado | Inicio (mm:ss) | Duracion | Intentos | Exit | Evidencia / errores |')
@@ -1554,6 +1570,17 @@ if ($Phase -in 'full','install','resume' -and -not $DryRun -and -not $NoFinalize
     } else {
         Write-Log "Finalize.ps1 no encontrado junto a Deploy.ps1: sin cierre del equipo (Administrador / usuario / dominio)" 'WARN'
     }
+}
+
+# Limpieza de Windows en segundo plano desde t=0 (no alarga el despliegue); el arranque se ajusta al final.
+$Script:DoOptimize = ($Phase -in 'full','install','resume') -and -not $DryRun -and -not $NoOptimize -and (Test-Path $Script:OptimizePs1)
+$Script:DebloatProc = $null; $Script:OptimizeResult = $null
+$Script:DebloatJson = Join-Path $Script:LogDir 'optimize_debloat.json'
+if ($Script:DoOptimize) {
+    Remove-Item -LiteralPath $Script:DebloatJson -Force -ErrorAction SilentlyContinue
+    $Script:DebloatProc = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -PassThru `
+        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Script:OptimizePs1)`" -OptimizeMode debloat -OptimizeOutJson `"$($Script:DebloatJson)`""
+    Write-Log 'Optimizacion de Windows en segundo plano: apps de Store sobrantes, publicidad, Bing, widgets' 'INFO'
 }
 
 $State = Get-State
@@ -1705,6 +1732,37 @@ try {
     }
 } finally {
     Remove-DefenderBoost -State $State
+}
+
+# Optimizacion de Windows: resultado de la limpieza + arranque (las entradas ya existen: apps instaladas).
+if ($Script:DoOptimize -and (Get-Command Set-StartupPolicy -ErrorAction SilentlyContinue)) {
+    Write-Step 'OPTIMIZACION DE WINDOWS'
+    $opt = [ordered]@{}
+    if ($Script:DebloatProc) {
+        if (-not $Script:DebloatProc.HasExited) {
+            Write-Log 'Esperando a que termine la limpieza de apps (max. 5 min)...' 'INFO'
+            [void]$Script:DebloatProc.WaitForExit(300000)
+        }
+        if (Test-Path $Script:DebloatJson) {
+            $d = Get-Content -LiteralPath $Script:DebloatJson -Raw | ConvertFrom-Json
+            $opt['Apps de Store quitadas'] = if (@($d.removed).Count) { @($d.removed) -join ', ' } else { 'ninguna (no estaban)' }
+            $opt['Directivas'] = @($d.policies) -join '; '
+            if (@($d.errors).Count) { $opt['Avisos de la limpieza'] = (@($d.errors) | Select-Object -First 5) -join ' | ' }
+            Write-Log "Limpieza: $(@($d.removed).Count) apps quitadas en $($d.seconds)s" 'OK'
+        } else {
+            $opt['Limpieza'] = 'sin resultado (no termino a tiempo)'
+            Write-Log 'Limpieza de apps sin resultado (no termino a tiempo)' 'WARN'
+        }
+    }
+    try {
+        $st = Set-StartupPolicy
+        foreach ($k in $st.Keys) { $opt["Arranque: $k"] = $st[$k] }
+        Write-Log ("Arranque: " + (($st.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')) 'OK'
+        $chk = Get-OptimizeChecks
+        foreach ($k in $chk.Keys) { $opt[$k] = $chk[$k] }
+        $opt['Windows Update'] = Start-WindowsUpdateScan
+    } catch { $opt['ERROR'] = $_.Exception.Message; Write-Log "Optimizacion: $($_.Exception.Message)" 'ERROR' }
+    $Script:OptimizeResult = $opt
 }
 
 # Cierre del equipo: solo con todas las apps OK (Administrador -> usuario -> dominio, en ese orden).

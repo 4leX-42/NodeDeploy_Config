@@ -73,5 +73,9 @@ if ($res) {
 $report = Get-ChildItem $resDir -Recurse -Filter 'POSTVALIDATE_REPORT.md' | Select-Object -First 1
 if ($report) { Write-LabLog "Informe: $($report.FullName)" 'INFO' }
 
-if (-not $KeepRunning) { Invoke-Vmrun -Arguments @('stop', $cfg.VmxPath, 'hard') -AllowFail | Out-Null }
+if (-not $KeepRunning) {
+    # Apagado ordenado: con 'hard' Windows pierde los ultimos cambios del registro (aun sin volcar a disco).
+    Invoke-Vmrun -Arguments @('stop', $cfg.VmxPath, 'soft') -AllowFail | Out-Null
+    if (Test-LabRunning $cfg) { Invoke-Vmrun -Arguments @('stop', $cfg.VmxPath, 'hard') -AllowFail | Out-Null }
+}
 Write-LabLog ("Prueba completa en {0:N1} min. Resultados: {1}" -f ((Get-Date) - $t0).TotalMinutes, $resDir) 'OK'

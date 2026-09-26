@@ -22,20 +22,37 @@ function Test-SecureStringEqual {
     return ($pa -ceq $pb)
 }
 
+function Get-BuiltinAdmin {
+    Get-LocalUser -ErrorAction SilentlyContinue | Where-Object { $_.SID.Value -match '^S-1-5-21-.+-500$' } | Select-Object -First 1
+}
+
 function Read-FinalizeAnswers {
     param([string]$Domain)
-    if ([Console]::IsInputRedirected) {
-        Write-Log 'Consola sin entrada interactiva: se omite el cierre del equipo (Administrador / usuario / dominio)' 'WARN'
-        return $null
+    # Lo ya hecho en una pasada anterior no se vuelve a preguntar.
+    $adm = Get-BuiltinAdmin
+    $adminReady = [bool]($adm -and $adm.Enabled -and $adm.PasswordLastSet)
+    $cs = Get-CimInstance Win32_ComputerSystem
+    $inDomain = if ($cs.PartOfDomain) { $cs.Domain } else { $null }
+    $needDomain = -not $inDomain -and -not "$Domain".Trim()
+    $needAdmin  = -not $adminReady
+    if (($needDomain -or $needAdmin) -and [Console]::IsInputRedirected) {
+        Write-Log 'Consola sin entrada interactiva: no se puede preguntar; se omite lo que falte del cierre del equipo' 'WARN'
+        $needDomain = $false; $needAdmin = $false
+        if (-not "$Domain".Trim()) { $Domain = 'no' }
     }
-    Write-Host ''
-    Write-Host '================ CIERRE DEL EQUIPO ================' -ForegroundColor Cyan
-    Write-Host ' Se aplica al final y solo si todas las apps quedan OK:' -ForegroundColor Cyan
-    Write-Host ' Administrador local con contraseña, usuario fuera de Administradores y dominio.' -ForegroundColor Cyan
-    Write-Host ''
+    if ($needDomain -or $needAdmin) {
+        Write-Host ''
+        Write-Host '================ CIERRE DEL EQUIPO ================' -ForegroundColor Cyan
+        Write-Host ' Se aplica al final y solo si todas las apps quedan OK:' -ForegroundColor Cyan
+        Write-Host ' Administrador local con contraseña, usuario fuera de Administradores y dominio.' -ForegroundColor Cyan
+        Write-Host ''
+    }
+    if ($inDomain) { Write-Host "El equipo ya está en el dominio $inDomain`: no se pregunta el dominio." -ForegroundColor DarkGray }
+    if ($adminReady) { Write-Host "El Administrador local ya está activado con contraseña: no se vuelve a pedir." -ForegroundColor DarkGray }
 
     # 1) Dominio (o "no")
     $Domain = "$Domain".Trim()
+    if ($inDomain) { $Domain = 'no' }
     while (-not $Domain) { $Domain = "$(Read-Host 'Dominio al que unir el equipo (escribe no para no unirlo)')".Trim() }
     $cred = $null
     if ($Domain -ieq 'no') {
@@ -49,32 +66,40 @@ function Read-FinalizeAnswers {
         $cred = New-Object System.Management.Automation.PSCredential($user, $pw)
     }
 
-    # 2) Contraseña del Administrador local (dos veces)
+    # 2) Contraseña del Administrador local (dos veces), salvo que ya este activado con contraseña
     $adminPw = $null
-    for ($i = 1; $i -le 3 -and -not $adminPw; $i++) {
+    for ($i = 1; $needAdmin -and $i -le 3 -and -not $adminPw; $i++) {
         $a = Read-Host 'Contraseña para el Administrador local' -AsSecureString
         if ($a.Length -eq 0) { Write-Host '  No puede estar vacía.' -ForegroundColor Yellow; continue }
         $b = Read-Host 'Repite la contraseña' -AsSecureString
         if (Test-SecureStringEqual $a $b) { $adminPw = $a } else { Write-Host '  No coinciden.' -ForegroundColor Yellow }
     }
-    if (-not $adminPw) { Write-Log 'Sin contraseña valida para el Administrador: no se tocaran las cuentas locales' 'WARN' }
+    if ($needAdmin -and -not $adminPw) { Write-Log 'Sin contraseña valida para el Administrador: no se tocaran las cuentas locales' 'WARN' }
 
-    $domTxt = if ($Domain) { "$Domain (usuario $($cred.UserName))" } else { 'no' }
-    $admTxt = if ($adminPw) { 'contraseña recibida' } else { 'omitido' }
+    $domTxt = if ($Domain) { "$Domain (usuario $($cred.UserName))" } elseif ($inDomain) { "ya en $inDomain" } else { 'no' }
+    $admTxt = if ($adminPw) { 'contraseña recibida' } elseif ($adminReady) { 'ya activado con contraseña' } else { 'omitido' }
     Write-Log "Cierre del equipo al final: dominio=$domTxt | Administrador local=$admTxt" 'INFO'
     Write-Host ''
-    return @{ Domain = $Domain; DomainCredential = $cred; AdminPassword = $adminPw }
+    return @{ Domain = $Domain; DomainCredential = $cred; AdminPassword = $adminPw; AdminReady = $adminReady; InDomain = $inDomain }
 }
 
 function Invoke-Finalize {
     param($Answers, $State, [string]$StandardUser = 'usuario')
     $res = [ordered]@{ 'Administrador local' = 'omitido (sin contraseña)'; 'Usuario estandar' = 'omitido'; 'Dominio' = 'no solicitado' }
 
-    # 1) Administrador integrado activado con contraseña
+    # 1) Administrador integrado activado con contraseña (si ya lo estaba de una pasada anterior, no se toca)
     $adminOk = $false
+    if (-not $Answers.AdminPassword -and $Answers.AdminReady) {
+        $adm = Get-BuiltinAdmin
+        $adminOk = [bool]($adm -and $adm.Enabled)
+        if ($adminOk) {
+            $res['Administrador local'] = "'$($adm.Name)' ya estaba activado con contraseña"
+            Write-Log "[CIERRE] Administrador local '$($adm.Name)' ya estaba activado con contraseña" 'OK'
+        }
+    }
     if ($Answers.AdminPassword) {
         try {
-            $adm = Get-LocalUser | Where-Object { $_.SID.Value -match '^S-1-5-21-.+-500$' } | Select-Object -First 1
+            $adm = Get-BuiltinAdmin
             if (-not $adm) { throw 'no se encuentra la cuenta Administrador integrada (SID -500)' }
             Set-LocalUser -SID $adm.SID -Password $Answers.AdminPassword -ErrorAction Stop
             Enable-LocalUser -SID $adm.SID -ErrorAction Stop
@@ -130,6 +155,8 @@ function Invoke-Finalize {
                 Write-Log "[CIERRE] Union al dominio $($Answers.Domain): $($_.Exception.Message)" 'ERROR'
             }
         }
+    } elseif ($Answers.InDomain) {
+        $res['Dominio'] = "ya estaba en $($Answers.InDomain)"
     }
     return $res
 }

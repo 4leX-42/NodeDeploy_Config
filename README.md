@@ -7,7 +7,9 @@
 3. **Doble clic `nodedeploy\Pincha_pa_instalar.bat`** (o `NodeDeploy_Run\PRO\Deploy.bat`). Acepta UAC y responde las preguntas del arranque:
    - **dominio** al que unir el equipo (o `no`) y, si hay dominio, usuario con permiso para unir equipos + contraseña;
    - **contraseña del Administrador local** (dos veces).
-4. Espera (~7 min). Si todas las apps quedan OK, al final: Administrador local activado, `usuario` fuera de Administradores y, lo último, unión al dominio. Si pide reinicio (exit 3), reinicia.
+   
+   Si relanzas el script en un equipo ya terminado, no vuelve a preguntar lo ya hecho (Administrador activado, equipo en dominio).
+4. Espera (~7 min). Mientras instala, en segundo plano, **optimiza Windows** (quita apps de Store que sobran, publicidad, Bing, widgets). Al final deja sin arrancar con Windows PDFelement, PDF24, Everything, b4notify y Edge (AnyDesk siempre activo) y, si todas las apps quedan OK: Administrador local activado, `usuario` fuera de Administradores y, lo último, unión al dominio. Si pide reinicio (exit 3), reinicia.
 
 **Valida con**: `NodeDeploy_Run\POSTVALIDATE_REPORT.md` (estado + cronograma por app, duraciones en min y s) y `Validate_Report.md`.
 
@@ -29,6 +31,7 @@ Al terminar (full / install / resume / validate) se abren `lusrmgr.msc` y `sysdm
 | Sin antivirus (pruebas) | `Deploy.bat full -SkipAV` |
 | No unir a dominio sin que pregunte | `Deploy.bat full -Domain no` |
 | Sin preguntas ni cierre (Administrador / usuario / dominio) | `Deploy.bat full -NoFinalize` |
+| Sin optimización de Windows | `Deploy.bat full -NoOptimize` |
 | Repetir apps que fallaron | desinstalarlas y relanzar: el script salta lo ya instalado |
 | Sin paralelismo (diagnóstico) | `Deploy.bat full -Serial` |
 | Sin exclusiones temporales de Defender | `Deploy.bat full -NoDefenderBoost` |
@@ -77,6 +80,21 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
 
 ---
 
+## Optimización de Windows (`Optimize.ps1`)
+
+| Qué | Cómo | Cuándo |
+|---|---|---|
+| Apps de Store que sobran (Xbox, Solitario, Noticias, Tiempo, Clipchamp, Spotify, TikTok, Outlook nuevo, Teams personal…) | se quitan del usuario actual y de los futuros. **Nunca** Store, Calculadora, Fotos, Terminal, códecs, winget, apps de Lenovo (Vantage) ni NanaZip | segundo plano desde t=0 |
+| Publicidad, apps que se instalan solas, sugerencias de Bing, widgets, chat | directivas del equipo + perfil del usuario actual + perfil por defecto (usuarios nuevos del dominio) | segundo plano desde t=0 |
+| Arranque | **deshabilitados** en "Aplicaciones de arranque": PDFelement (Wondershare), PDF24, Everything, b4notify; Edge sin arranque ni segundo plano (directiva). Los servicios de PDF24 (impresora) y Everything (índice) siguen | al final |
+| AnyDesk | servicio automático y en marcha, reinicio si se cae, entrada de inicio habilitada y **sin botón Desinstalar** (un usuario sin admin no puede quitarlo ni desactivarlo) | al final |
+| Comprobaciones | TRIM del SSD (se activa si estuviera apagado), software del fabricante a revisar (antivirus de prueba = choca con ESET/Cortex), lo que sigue arrancando con Windows | al final, en el informe |
+| Windows Update | se lanza la búsqueda en segundo plano (no espera ni reinicia) | al final |
+
+No se hace, a propósito: `winget upgrade --all` (cambiaría versiones validadas de las apps corporativas y alarga mucho), instalar actualizaciones de Windows esperando (decenas de minutos y reinicios), cambiar el plan de energía (son portátiles), desinstalar solo el software del fabricante (se informa para revisarlo). La lista de apps a quitar está al principio de `Optimize.ps1`.
+
+---
+
 ## Estructura
 
 ```
@@ -94,7 +112,7 @@ nodedeploy\
 │   └── Imanage 3.0\             Drive 10.13 · Work Desktop 10.10.2.62 + Agent Services · Native 10.6.1.15
 │                                (cada InstallScript lleva su setup.iss: respuesta silenciosa del propio paquete)
 ├── NodeDeploy_Run\
-│   ├── PRO\                     Deploy.bat · Deploy.ps1 · Finalize.ps1 (cierre) · Validate.ps1 · Uninstall.ps1 · Diag-iManageWD.ps1
+│   ├── PRO\                     Deploy.bat · Deploy.ps1 · Finalize.ps1 (cierre) · Optimize.ps1 (optimización) · Validate.ps1 · Uninstall.ps1 · Diag-iManageWD.ps1
 │   │                            README.md (técnico) · QUICK_START.md · CHECKLIST.md
 │   └── state\                   se crea al ejecutar: logs y estado (los informes quedan en NodeDeploy_Run\)
 ├── Lab\                       ← laboratorio VMware: pruebas sin tocar el PC
@@ -124,4 +142,4 @@ nodedeploy\
 
 ---
 
-_Última actualización: 2026-09-26 — NodeDeploy PRO v5.2.0_
+_Última actualización: 2026-09-26 — NodeDeploy PRO v5.3.0_
