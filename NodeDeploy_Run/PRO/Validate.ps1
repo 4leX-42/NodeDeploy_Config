@@ -57,6 +57,7 @@ $Script:Checks = @(
     [pscustomobject]@{ App='dnGrep';                RegKw='dnGrep';                Svc=$null;             File=@("$pf\dnGREP\dnGREP.exe") },
     [pscustomobject]@{ App='Everything';            RegKw='Everything';            Svc='Everything';      File=@("$pf\Everything\Everything.exe") },
     [pscustomobject]@{ App='PDF24 Creator';         RegKw='PDF24 Creator';         Svc=$null;             File=@("$pf\PDF24\pdf24.exe") },
+    [pscustomobject]@{ App='Adobe Acrobat Reader';  RegKw='Adobe Acrobat';         Svc=$null;             File=@("$pf\Adobe\Acrobat DC\Acrobat\Acrobat.exe") },
     [pscustomobject]@{ App='NanaZip';               RegKw=$null;                   Svc=$null;             File=@(); Appx='40174MouriNaruto.NanaZip' }
 )
 

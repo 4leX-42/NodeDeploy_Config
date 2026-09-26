@@ -36,6 +36,8 @@
 | 14 | `Uninstall.ps1` arreglado | No parseaba (error de sintaxis) y habría quitado `O365ProPlusRetail`; ahora solo quita `OutlookRetail`. |
 | 15 | **v5.1: cierre del equipo** (`Finalize.ps1`) | Administrador local, `usuario` fuera de Administradores y dominio, preguntados al arrancar y aplicados al final si todo queda OK. |
 | 16 | **v5.2: PDF24 Creator, Everything, dnGrep** (MSI) y **NanaZip** (MSIX con DISM, para todos los usuarios) | Nuevas apps del catálogo. Los nombres de instalador admiten comodín: para actualizar basta con sustituir el fichero. |
+| 17 | **v5.3: optimización de Windows** (`Optimize.ps1`) | Limpieza de apps y publicidad en segundo plano, arranque (apps deshabilitadas, AnyDesk obligatorio), TRIM, Windows Update. |
+| 18 | **v5.4: Adobe Acrobat Reader** | Paquete empresarial silencioso; no quita los PDF a PDFelement. Spotify, Outlook nuevo y Teams personal se quedan. |
 
 ---
 
@@ -187,4 +189,4 @@ state\
 
 ---
 
-_NodeDeploy PRO v5.3.0 · 2026-09-26_
+_NodeDeploy PRO v5.4.0 · 2026-09-26_

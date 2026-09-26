@@ -49,7 +49,7 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
      ├─ Carril MSI (serializado, espera mutex _MSIExecute) ────────────────────────────────┤
      │   AnyDesk → AqNet → Nebula → ESET agent → Chrome MSI → Mitel → iManage AS →          │
      │   iManage Drive → Drive Native → [espera Outlook] iManage Work Desktop →             │
-     │   dnGrep → Everything → PDF24 (mientras Work Desktop espera) → Cortex XDR (último)    │
+     │   dnGrep → Everything → PDF24 → Adobe Reader (mientras WD espera) → Cortex (último)   │
      │                                                                                     │
      └─ Carril EXE (NSIS/Inno/MSIX, en paralelo) ──────────────────────────────────────────┘
          Bit4id → PDFelement → Autofirma (después de Chrome) → NanaZip
@@ -72,6 +72,7 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
 | dnGrep 5.0 | MSI (`LAUNCHAPPONEXIT=0`) | MSI |
 | Everything 1.4.1 | MSI (valores por defecto: servicio + arranque con Windows + accesos directos) | MSI |
 | PDF24 Creator 11.30 | MSI (`AUTOUPDATE=No REGISTERREADER=No`: sin avisos de actualización; no se registra como lector PDF) | MSI |
+| Adobe Acrobat Reader 26.002 | paquete empresarial `setup.exe /sAll /rs /msi EULA_ACCEPT=YES ENABLE_CHROMEEXT=0 LEAVE_PDFOWNERSHIP=YES` (sin licencia al abrir, sin extensión de Chrome, no quita los PDF a PDFelement; actualizador de Adobe activo por seguridad) | MSI |
 | MDR Cortex XDR | MSI | MSI (último) |
 | Bit4id Middleware, Autofirma 1.9 | NSIS | EXE |
 | PDFelement Business 10.1.5 | Inno Setup (`/NOPAGE`, log propio) | EXE |
@@ -84,7 +85,7 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
 
 | Qué | Cómo | Cuándo |
 |---|---|---|
-| Apps de Store que sobran (Xbox, Solitario, Noticias, Tiempo, Clipchamp, Spotify, TikTok, Outlook nuevo, Teams personal…) | se quitan del usuario actual y de los futuros. **Nunca** Store, Calculadora, Fotos, Terminal, códecs, winget, apps de Lenovo (Vantage) ni NanaZip | segundo plano desde t=0 |
+| Apps de Store que sobran (Xbox, Solitario, Noticias, Tiempo, Clipchamp, TikTok, Disney+, Candy Crush…) | se quitan del usuario actual y de los futuros. **Nunca** Store, Calculadora, Fotos, Terminal, códecs, winget, apps de Lenovo (Vantage), NanaZip, ni Spotify / Outlook nuevo / Teams personal (se quedan) | segundo plano desde t=0 |
 | Publicidad, apps que se instalan solas, sugerencias de Bing, widgets, chat | directivas del equipo + perfil del usuario actual + perfil por defecto (usuarios nuevos del dominio) | segundo plano desde t=0 |
 | Arranque | **deshabilitados** en "Aplicaciones de arranque": PDFelement (Wondershare), PDF24, Everything, b4notify; Edge sin arranque ni segundo plano (directiva). Los servicios de PDF24 (impresora) y Everything (índice) siguen | al final |
 | AnyDesk | servicio automático y en marcha, reinicio si se cae, entrada de inicio habilitada y **sin botón Desinstalar** (un usuario sin admin no puede quitarlo ni desactivarlo) | al final |
@@ -102,7 +103,7 @@ nodedeploy\
 ├── Pincha_pa_instalar.bat     ← doble clic: lanza NodeDeploy_Run\PRO\Deploy.bat
 ├── README.md                  ← esta guía
 ├── 1.Node_Preparation\        ← SOLO los instaladores que usa v5
-│   ├── *.msi / *.exe / *.msixbundle   19 apps (+ ChromeSetup.exe de reserva). Nombres con versión:
+│   ├── *.msi / *.exe / *.msixbundle   20 apps (+ ChromeSetup.exe de reserva; Adobe Reader en su carpeta). Nombres con versión:
 │   │                            para actualizar PDF24, Everything, dnGrep o NanaZip basta con sustituir el fichero
 │   ├── install_config.ini       certificado del agente ESET (nunca va a git)
 │   ├── OutlookClassic.exe       Outlook clásico (instalador de Microsoft)
@@ -142,4 +143,4 @@ nodedeploy\
 
 ---
 
-_Última actualización: 2026-09-26 — NodeDeploy PRO v5.3.0_
+_Última actualización: 2026-09-26 — NodeDeploy PRO v5.4.0_

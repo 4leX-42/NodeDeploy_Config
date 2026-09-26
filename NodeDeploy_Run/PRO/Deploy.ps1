@@ -53,6 +53,9 @@
     TRIM, software del fabricante a revisar y busqueda de Windows Update. -NoOptimize lo omite.
     Cierre del equipo: no vuelve a preguntar lo ya hecho (Administrador activado, equipo en dominio).
 
+    v5.4.0: Adobe Acrobat Reader (paquete empresarial, sin quitar los PDF a PDFelement). La limpieza
+    deja Spotify, el Outlook nuevo y Teams personal.
+
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
     probe    -> solo inventario de ficheros
@@ -99,7 +102,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.3.0'
+$Script:Version       = '5.4.0'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -626,6 +629,15 @@ $Script:Apps = @(
         Boost=@{ Paths=@("$env:ProgramFiles\PDF24") }
     },
     [pscustomobject]@{
+        # Paquete empresarial (setup.exe + AcroPro.msi + parche .msp; setup.ini aplica el parche). En Reader aparece
+        # como "Adobe Acrobat (64-bit)". EULA_ACCEPT=YES (sin licencia al abrir), ENABLE_CHROMEEXT=0 (sin extension
+        # de Chrome), LEAVE_PDFOWNERSHIP=YES (no le quita los PDF a PDFelement). El actualizador se mantiene (seguridad).
+        Name='Adobe Acrobat Reader'; File='AdobeReader_x64_*\setup.exe'; Type='exe'; Lane='msi'; Order=140; Timeout=1200
+        Args='/sAll /rs /msi EULA_ACCEPT=YES ENABLE_CHROMEEXT=0 LEAVE_PDFOWNERSHIP=YES'
+        Detect=@('Adobe Acrobat'); FilePaths=@("$env:ProgramFiles\Adobe\Acrobat DC\Acrobat\Acrobat.exe")
+        Boost=@{ Paths=@("$env:ProgramFiles\Adobe") }
+    },
+    [pscustomobject]@{
         # Siempre el ultimo: su monitor de comportamiento bloquea el runtime InstallScript de iManage.
         Name='MDR Cortex XDR'; File='MDR_Windows_Andersen_8_2_x64.msi'; Type='msi'; Lane='msi'; Order=999; Timeout=900
         AfterAll=$true; MsiExtra='REBOOT=ReallySuppress'
@@ -671,7 +683,7 @@ $Script:DryRunSeconds = @{
     'Google Chrome'=30; 'MitelConnect'=61; 'iManage Agent Services'=9; 'iManage Drive'=53
     'iManage Drive Native'=5; 'iManage Work Desktop'=45; 'MDR Cortex XDR'=23
     'Bit4id Middleware'=35; 'PDFelement Business'=53; 'Autofirma'=36
-    'dnGrep'=20; 'Everything'=6; 'PDF24 Creator'=60; 'NanaZip'=10
+    'dnGrep'=20; 'Everything'=6; 'PDF24 Creator'=60; 'NanaZip'=10; 'Adobe Acrobat Reader'=90
 }
 #endregion
 

@@ -120,6 +120,7 @@ function Remove-AppxAllUsers {
 Write-Host '=== NodeDeploy Uninstall ===' -ForegroundColor Magenta
 if ($IncludeAV) { Uninstall-App 'MDR Cortex XDR' 'Cortex XDR' }
 Uninstall-App 'PDF24 Creator' 'PDF24 Creator' @('pdf24')
+Uninstall-App 'Adobe Acrobat Reader' 'Adobe Acrobat' @('Acrobat','AcroCEF')
 Uninstall-App 'Everything' 'Everything' @('Everything')
 Uninstall-App 'dnGrep' 'dnGrep' @('dnGREP')
 Remove-AppxAllUsers 'NanaZip' '40174MouriNaruto.NanaZip'

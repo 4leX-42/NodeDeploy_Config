@@ -44,13 +44,13 @@ Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskPath -no
     Add ("  {0}{1} [{2}] trig={3} :: {4}" -f $_.TaskPath, $_.TaskName, $_.State, $trig, $act)
 }
 Add '--- servicios de las apps (y Edge)'
-Get-CimInstance Win32_Service | Where-Object { $_.Name -match 'AnyDesk|Everything|Wondershare|WsApp|Elevation|PDF24|pdf24|Bit4id|b4|edgeupdate|MicrosoftEdge|Mitel|iManage|Nebula|nebula' -or $_.PathName -match 'Wondershare|PDF24|Bit4id|Everything|AnyDesk' } |
+Get-CimInstance Win32_Service | Where-Object { $_.Name -match 'AnyDesk|Everything|Wondershare|WsApp|Elevation|PDF24|pdf24|Bit4id|b4|edgeupdate|MicrosoftEdge|Mitel|iManage|Nebula|nebula|Adobe|Acro' -or $_.PathName -match 'Wondershare|PDF24|Bit4id|Everything|AnyDesk|Adobe' } |
     ForEach-Object { Add ("  {0} [{1}/{2}] {3}" -f $_.Name, $_.StartMode, $_.State, $_.PathName) }
 Add '--- Active Setup (por usuario al iniciar sesion) de las apps'
 Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Active Setup\Installed Components' -ErrorAction SilentlyContinue |
-    ForEach-Object { $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue; if ("$($p.StubPath) $($p.'(default)')" -match 'Wondershare|PDF24|Bit4id|Everything|AnyDesk|Edge|b4') { Add ("  {0} :: {1} :: {2}" -f $_.PSChildName, $p.'(default)', $p.StubPath) } }
+    ForEach-Object { $p = Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue; if ("$($p.StubPath) $($p.'(default)')" -match 'Wondershare|PDF24|Bit4id|Everything|AnyDesk|Edge|b4|Adobe|Acrobat') { Add ("  {0} :: {1} :: {2}" -f $_.PSChildName, $p.'(default)', $p.StubPath) } }
 Add '--- procesos de las apps en marcha'
-Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'AnyDesk|Everything|Wondershare|PDFelement|pdf24|b4|bit4|msedge|WsHelper|Notify' } |
+Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'AnyDesk|Everything|Wondershare|PDFelement|pdf24|b4|bit4|msedge|WsHelper|Notify|Acro|Adobe' } |
     ForEach-Object { Add ("  {0} (sesion {1}) {2}" -f $_.ProcessName, $_.SessionId, $(try { $_.Path } catch { '' })) }
 Add '--- Edge: politicas'
 $pe = Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Edge' -ErrorAction SilentlyContinue

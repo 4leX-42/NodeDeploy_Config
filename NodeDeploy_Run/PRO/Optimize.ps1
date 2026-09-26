@@ -25,14 +25,15 @@ param(
 )
 
 # Apps de Store que sobran en el despacho (patrón = nombre del paquete). Ajustable.
+# Se quedan a petición del usuario: Spotify, Outlook nuevo y Teams personal.
 $Script:DebloatApps = @(
     'Microsoft.BingNews', 'Microsoft.BingWeather', 'Microsoft.BingSearch', 'Microsoft.GamingApp', 'Microsoft.XboxApp',
     'Microsoft.XboxGamingOverlay', 'Microsoft.Xbox.TCUI', 'Microsoft.MicrosoftSolitaireCollection',
     'Microsoft.ZuneMusic', 'Microsoft.ZuneVideo', 'Microsoft.People', 'Microsoft.GetHelp', 'Microsoft.Getstarted',
     'Microsoft.WindowsFeedbackHub', 'Clipchamp.Clipchamp', 'Microsoft.MicrosoftOfficeHub', 'Microsoft.549981C3F5F10',
     'MicrosoftCorporationII.QuickAssist', 'MicrosoftCorporationII.MicrosoftFamily', 'Microsoft.WindowsMaps',
-    'Microsoft.YourPhone', 'Microsoft.OutlookForWindows', 'MicrosoftTeams', 'Microsoft.Windows.DevHome',
-    '*Spotify*', '*Disney*', '*TikTok*', '*CandyCrush*', '*Netflix*', '*Facebook*', '*Instagram*', '*AmazonAlexa*'
+    'Microsoft.YourPhone', 'Microsoft.Windows.DevHome',
+    '*Disney*', '*TikTok*', '*CandyCrush*', '*Netflix*', '*Facebook*', '*Instagram*', '*AmazonAlexa*'
 )
 # Nunca se tocan aunque algún patrón coincidiera
 $Script:DebloatKeep = 'Microsoft\.WindowsStore|WindowsCalculator|Windows\.Photos|WindowsTerminal|Extension$|DesktopAppInstaller|Lenovo|^E046963F|^E0469640|NanaZip|VCLibs|\.NET\.|UI\.Xaml|MSTeams$'

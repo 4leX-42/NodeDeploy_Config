@@ -2,6 +2,9 @@
 *.exe
 *.msi
 *.msixbundle
+*.msp
+# Paquetes de instalacion completos (vendor): solo en el disco
+1.Node_Preparation/AdobeReader_x64_*/
 NanaZip_*.xml
 *.dat
 *.lf
