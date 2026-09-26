@@ -1,6 +1,6 @@
 # NodeDeploy PRO v5 — Quick Start
 
-> Conecta, ejecuta, espera. Cero interacción. Outlook en background, dos carriles de instalación en paralelo.
+> Conecta, responde las preguntas del arranque y espera. Outlook en background, dos carriles de instalación en paralelo.
 
 ## 1) Equipo destino
 
@@ -13,13 +13,26 @@ nodedeploy\
 └── NodeDeploy_Run\PRO\
     ├── Deploy.bat            <- LANZAR AQUÍ
     ├── Deploy.ps1
+    ├── Finalize.ps1          <- cierre: Administrador, usuario, dominio
     └── Validate.ps1
 ```
 
 ## 2) Ejecutar
 
 - **Doble clic**: `NodeDeploy_Run\PRO\Deploy.bat` (o `Pincha_pa_instalar.bat` en la raíz). Acepta UAC.
-- **CMD admin**: `Deploy.bat` · opciones: `Deploy.bat full -InstallFullOffice` (equipo sin Office), `-Serial`, `-SkipAV`.
+- **CMD admin**: `Deploy.bat` · opciones: `Deploy.bat full -InstallFullOffice` (equipo sin Office), `-Serial`, `-SkipAV`, `-Domain no`, `-NoFinalize`.
+
+Al arrancar pregunta (luego todo va solo):
+
+```
+Dominio al que unir el equipo (escribe no para no unirlo): andersen.local
+Usuario de andersen.local con permiso para unir equipos: tecnico
+Contraseña de andersen.local	ecnico: ********
+Contraseña para el Administrador local: ********
+Repite la contraseña: ********
+```
+
+Al final, **solo si todas las apps quedan OK**: activa el Administrador local con esa contraseña, saca a `usuario` de Administradores y, lo último, une el equipo al dominio. Si algo falla, el cierre se pospone: arréglalo y relanza el script (salta lo ya instalado).
 
 ## 3) Esperar
 
@@ -46,9 +59,9 @@ Se abren: `POSTVALIDATE_REPORT.md` (estado + cronograma), **Local Users and Grou
 
 | Exit | Acción |
 |---|---|
-| 0 | Todo OK. Reinicio recomendado. |
-| 1 | Algo falló tras 3 intentos. Revisa el reporte (columna errores + log del instalador). `Deploy.bat resume` reintenta solo lo pendiente. |
-| 3 | Reboot requerido. Reinicia + `Deploy.bat resume`. |
+| 0 | Todo OK (sin dominio). Reinicio recomendado. |
+| 1 | Algo falló tras 3 intentos (cierre pospuesto). Revisa el reporte; desinstala lo que quede a medias y relanza el script. |
+| 3 | Reinicio requerido (unión al dominio o un instalador lo pide). Reinicia. |
 
 ## 5) Validar a mano
 

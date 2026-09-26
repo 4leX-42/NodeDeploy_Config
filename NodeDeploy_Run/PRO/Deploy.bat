@@ -13,7 +13,10 @@ REM     Deploy.bat full -SkipAV              (sin ESET / Cortex: laboratorio)
 REM     Deploy.bat full -InstallFullOffice   (equipo SIN Office de fabrica)
 REM     Deploy.bat full -Serial              (sin carriles paralelos, diagnostico)
 REM     Deploy.bat full -NoDefenderBoost     (sin exclusiones temporales de Defender)
-REM     Deploy.bat full -OnlyApps Mitel+Desktop+Cortex   (solo esas apps: nombre o parte, separadas por +)
+REM     Deploy.bat full -Domain no           (responde "no" a la pregunta del dominio)
+REM     Deploy.bat full -NoFinalize          (sin preguntas ni cierre: Administrador / usuario / dominio)
+REM  Al arrancar pregunta dominio (o "no"), usuario del dominio y contrasena del Administrador local;
+REM  al final, solo si todo queda OK: Administrador activo, "usuario" fuera de Administradores y dominio.
 REM
 REM  Requisitos: Windows 10/11 x64, admin, PowerShell 5.1+.
 REM ============================================================
@@ -103,14 +106,18 @@ echo.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%DEPLOY_PS1%" -Phase %PHASE% -StatePath "%STATE_DIR%" %EXTRA%
 set "RC=!ERRORLEVEL!"
 
-if "!RC!"=="0" (
+REM Validate tambien con exit 3 (reinicio pendiente por instaladores o por la union al dominio)
+set "RUN_VALIDATE=0"
+if "!RC!"=="0" set "RUN_VALIDATE=1"
+if "!RC!"=="3" set "RUN_VALIDATE=1"
+if "!RUN_VALIDATE!"=="1" (
     if /I not "%PHASE%"=="probe" (
         if /I not "%PHASE%"=="cleanup" (
             echo.
             echo [STEP] Ejecutando Validate.ps1 ^(smoke tests^) ...
             powershell -NoProfile -ExecutionPolicy Bypass -File "%VALIDATE_PS1%" -StatePath "%STATE_DIR%"
             set "VRC=!ERRORLEVEL!"
-            if not "!VRC!"=="0" set "RC=!VRC!"
+            if not "!VRC!"=="0" if not "!RC!"=="3" set "RC=!VRC!"
         )
     )
 )
@@ -125,7 +132,8 @@ if "!RC!"=="0" (
     echo   Algunas aplicaciones fallaron. Revisa POSTVALIDATE_REPORT.md
 ) else if "!RC!"=="3" (
     echo   RESULT: REBOOT REQUIRED   Phase=%PHASE%   exit=3
-    echo   Reinicia el equipo y ejecuta: Deploy.bat resume
+    echo   Reinicia el equipo para completar ^(instaladores que lo piden y/o union al dominio^).
+    echo   Si quedo alguna app pendiente, tras reiniciar: Deploy.bat resume
 ) else if "!RC!"=="2" (
     echo   RESULT: CONFIG ERROR   exit=2
     echo   Fuente o configuracion invalidos.

@@ -38,7 +38,11 @@
       * Work Desktop espera (max. 2 min) a que Office este registrado (ProgID Word.Application); si
         falla, el informe incluye el ResultCode de setup.log y el motivo del log de iManage.
       * MitelConnect cierra antes las apps de Office abiertas (con Outlook abierto preguntaba Si/No).
-      * -OnlyApps: repetir solo algunas apps (Deploy.bat full -OnlyApps Mitel+Desktop+Cortex).
+
+    v5.1.0: cierre del equipo (Finalize.ps1). Al arrancar pregunta dominio (o "no"), usuario del
+    dominio y contraseña del Administrador local; al final, solo si todo queda OK: Administrador
+    activado -> 'usuario' fuera de Administradores -> union al dominio (lo ultimo).
+    -Domain <nombre|no> responde la primera pregunta; -NoFinalize omite todo el cierre.
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -57,7 +61,6 @@ param(
     [ValidateSet('full','probe','install','validate','resume','cleanup')]
     [string]$Phase = 'full',
     [string[]]$SkipApps = @(),
-    [string[]]$OnlyApps = @(),
     [int]$MaxRetries = 2,
     [switch]$NonInteractive = $true,
     [switch]$NoOffice,
@@ -69,7 +72,11 @@ param(
     [switch]$Serial,
     [switch]$DryRun,
     [ValidateSet('bootstrap','odt')]
-    [string]$OutlookMethod = 'bootstrap'
+    [string]$OutlookMethod = 'bootstrap',
+    # Cierre del equipo (Finalize.ps1): se pregunta al arrancar y se aplica al final si todo queda OK.
+    [string]$Domain,                     # nombre del dominio o 'no' (si se omite, se pregunta)
+    [string]$StandardUser = 'usuario',   # cuenta que sale del grupo Administradores
+    [switch]$NoFinalize                  # sin preguntas ni cierre (laboratorio / reintentos)
 )
 
 # ============================================================
@@ -82,7 +89,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.0.2'
+$Script:Version       = '5.1.0'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -95,10 +102,8 @@ if ($env:NODEDEPLOY_SERIAL -eq '1') { $Serial = $true }
 
 if (-not $Source)    { $Source    = $Script:DefaultSource }
 if (-not $StatePath) { $StatePath = $Script:DefaultState }
-# powershell -File pasa "A,B" como UNA cadena: se separa aqui. '+' sirve desde Deploy.bat, donde
-# cmd trata comas y espacios como separadores (Deploy.bat full -OnlyApps Mitel+Desktop+Cortex).
-$SkipApps = @($SkipApps | ForEach-Object { "$_" -split '[,;+]' } | ForEach-Object { $_.Trim(" '`"") } | Where-Object { $_ })
-$OnlyApps = @($OnlyApps | ForEach-Object { "$_" -split '[,;+]' } | ForEach-Object { $_.Trim(" '`"") } | Where-Object { $_ })
+# powershell -File pasa "A,B" como UNA cadena: se separa por comas aqui.
+$SkipApps = @($SkipApps | ForEach-Object { "$_" -split ',' } | ForEach-Object { $_.Trim(" '`"") } | Where-Object { $_ })
 if ($SkipAV)         { $SkipApps  = @($SkipApps) + $Script:AVApps | Select-Object -Unique }
 
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -624,16 +629,11 @@ $Script:DryRunSeconds = @{
     'iManage Drive Native'=5; 'iManage Work Desktop'=45; 'MDR Cortex XDR'=23
     'Bit4id Middleware'=35; 'PDFelement Business'=53; 'Autofirma'=36
 }
-
-# -OnlyApps: instala solo las apps indicadas (nombre o parte, sin distinguir mayusculas); el resto
-# queda como saltada por el usuario. Los requisitos saltados valen si ya estan instalados.
-$Script:OnlyUnmatched = @()
-if ($OnlyApps.Count) {
-    $selected = @($Script:Apps | Where-Object { $n = $_.Name; @($OnlyApps | Where-Object { $n -like "*$_*" }).Count -gt 0 } | ForEach-Object { $_.Name })
-    $Script:OnlyUnmatched = @($OnlyApps | Where-Object { $t = $_; -not @($Script:Apps | Where-Object { $_.Name -like "*$t*" }).Count })
-    $SkipApps = @(@($SkipApps) + @($Script:Apps | Where-Object { $selected -notcontains $_.Name } | ForEach-Object { $_.Name }) | Select-Object -Unique)
-}
 #endregion
+
+# Cierre del equipo (Administrador local, usuario estandar, dominio)
+$Script:FinalizePs1 = Join-Path $Script:ScriptDir 'Finalize.ps1'
+if (Test-Path $Script:FinalizePs1) { . $Script:FinalizePs1 }
 
 # ============================================================
 #region PATHS / OFFICE HELPERS
@@ -1433,6 +1433,12 @@ function Write-FinalReport {
     [void]$sb.AppendLine("| FAIL / BLOCKED | $fail |")
     [void]$sb.AppendLine("| Skipped (usuario) | $skip |")
     [void]$sb.AppendLine('')
+    if ($Script:FinalizeResult) {
+        [void]$sb.AppendLine('## Cierre del equipo')
+        [void]$sb.AppendLine('')
+        foreach ($k in $Script:FinalizeResult.Keys) { [void]$sb.AppendLine("- **${k}:** $($Script:FinalizeResult[$k])") }
+        [void]$sb.AppendLine('')
+    }
     [void]$sb.AppendLine('## Detalle y cronograma')
     [void]$sb.AppendLine('')
     [void]$sb.AppendLine('| App | Carril | Estado | Inicio (mm:ss) | Duracion | Intentos | Exit | Evidencia / errores |')
@@ -1485,9 +1491,15 @@ foreach ($l in @(
     "  Phase  : $Phase   Retries: $MaxRetries   Modo: $(if ($Serial) { 'serie' } else { 'paralelo' })",
     "  Skip   : $(if ($SkipApps) { $SkipApps -join ', ' } else { '-' })   Outlook: $OutlookMethod   QuickEdit off: $quickEditOff",
     '============================================================')) { Write-Log $l 'STEP' }
-if ($OnlyApps.Count) {
-    Write-Log "  Solo   : $(@($Script:Apps | Where-Object { $SkipApps -notcontains $_.Name } | ForEach-Object { $_.Name }) -join ', ')" 'STEP'
-    foreach ($t in $Script:OnlyUnmatched) { Write-Log "  -OnlyApps '$t' no coincide con ninguna app del catalogo" 'WARN' }
+
+# Preguntas del cierre del equipo al arrancar: el resto del despliegue va desatendido.
+$Script:FinalizeAnswers = $null; $Script:FinalizeResult = $null
+if ($Phase -in 'full','install','resume' -and -not $DryRun -and -not $NoFinalize) {
+    if (Get-Command Read-FinalizeAnswers -ErrorAction SilentlyContinue) {
+        $Script:FinalizeAnswers = Read-FinalizeAnswers -Domain $Domain
+    } else {
+        Write-Log "Finalize.ps1 no encontrado junto a Deploy.ps1: sin cierre del equipo (Administrador / usuario / dominio)" 'WARN'
+    }
 }
 
 $State = Get-State
@@ -1641,6 +1653,20 @@ try {
     Remove-DefenderBoost -State $State
 }
 
+# Cierre del equipo: solo con todas las apps OK (Administrador -> usuario -> dominio, en ese orden).
+if ($Script:FinalizeAnswers) {
+    $pending = @(Get-AllRecords $State | Where-Object { $_.status -like 'fail*' -or $_.status -eq 'blocked' })
+    if ($pending.Count -eq 0) {
+        Write-Step 'CIERRE DEL EQUIPO'
+        $Script:FinalizeResult = Invoke-Finalize -Answers $Script:FinalizeAnswers -State $State -StandardUser $StandardUser
+    } else {
+        $Script:FinalizeResult = [ordered]@{ 'Pospuesto' = "hay $($pending.Count) app(s) con fallo; se hara al relanzar el script cuando todas esten OK" }
+        Write-Log "[CIERRE] Pospuesto: $($pending.Count) app(s) con fallo. Relanza el script cuando esten OK." 'WARN'
+    }
+    $Script:FinalizeAnswers = $null   # las contraseñas no se guardan mas alla de este punto
+    Save-State $State
+}
+
 Write-Step 'REPORT FINAL'
 $reportFile = Write-FinalReport $State
 $apps = Get-AllRecords $State
@@ -1653,7 +1679,7 @@ Write-Log "FAIL/BLOCKED: $($failures.Count)$(if ($failures.Count) { ' -> ' + (($
 Write-Log "Report: $reportFile" 'INFO'
 
 if ($State.reboot_required) {
-    Write-Log '=== REBOOT REQUERIDO === Reinicia y ejecuta: Deploy.bat resume' 'WARN'
+    Write-Log '=== REINICIO REQUERIDO === Reinicia el equipo para completar (instaladores que lo piden y/o union al dominio)' 'WARN'
     exit 3
 }
 if ($failures.Count -gt 0) { exit 1 }

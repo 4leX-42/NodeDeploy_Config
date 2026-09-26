@@ -4,8 +4,10 @@
 
 1. Copia la **carpeta completa `nodedeploy\`** al M.2 (o úsalo directamente desde él).
 2. Conecta el M.2 al portátil Lenovo (Windows 10/11 x64, con su Microsoft 365 de fábrica).
-3. **Doble clic `nodedeploy\Pincha_pa_instalar.bat`** (o `NodeDeploy_Run\PRO\Deploy.bat`). Acepta UAC.
-4. Espera (~7 min). Si pide reboot (exit 3): reinicia → `Deploy.bat resume`.
+3. **Doble clic `nodedeploy\Pincha_pa_instalar.bat`** (o `NodeDeploy_Run\PRO\Deploy.bat`). Acepta UAC y responde las preguntas del arranque:
+   - **dominio** al que unir el equipo (o `no`) y, si hay dominio, usuario con permiso para unir equipos + contraseña;
+   - **contraseña del Administrador local** (dos veces).
+4. Espera (~7 min). Si todas las apps quedan OK, al final: Administrador local activado, `usuario` fuera de Administradores y, lo último, unión al dominio. Si pide reinicio (exit 3), reinicia.
 
 **Valida con**: `NodeDeploy_Run\POSTVALIDATE_REPORT.md` (estado + cronograma por app, duraciones en min y s) y `Validate_Report.md`.
 
@@ -25,7 +27,9 @@ Al terminar (full / install / resume / validate) se abren `lusrmgr.msc` y `sysdm
 | Probe (no instala) | `Deploy.bat probe` |
 | Equipo SIN Office de fábrica | `Deploy.bat full -InstallFullOffice` |
 | Sin antivirus (pruebas) | `Deploy.bat full -SkipAV` |
-| Solo algunas apps (p. ej. repetir las que fallaron) | `Deploy.bat full -OnlyApps Mitel+Desktop+Cortex` (nombre o parte, separadas por `+`) |
+| No unir a dominio sin que pregunte | `Deploy.bat full -Domain no` |
+| Sin preguntas ni cierre (Administrador / usuario / dominio) | `Deploy.bat full -NoFinalize` |
+| Repetir apps que fallaron | desinstalarlas y relanzar: el script salta lo ya instalado |
 | Sin paralelismo (diagnóstico) | `Deploy.bat full -Serial` |
 | Sin exclusiones temporales de Defender | `Deploy.bat full -NoDefenderBoost` |
 | Cleanup procesos iManage | `Deploy.bat cleanup` |
@@ -84,12 +88,11 @@ nodedeploy\
 │   └── Imanage 3.0\             Drive 10.13 · Work Desktop 10.10.2.62 + Agent Services · Native 10.6.1.15
 │                                (cada InstallScript lleva su setup.iss: respuesta silenciosa del propio paquete)
 ├── NodeDeploy_Run\
-│   ├── PRO\                     Deploy.bat · Deploy.ps1 · Validate.ps1 · Uninstall.ps1 · Diag-iManageWD.ps1
+│   ├── PRO\                     Deploy.bat · Deploy.ps1 · Finalize.ps1 (cierre) · Validate.ps1 · Uninstall.ps1 · Diag-iManageWD.ps1
 │   │                            README.md (técnico) · QUICK_START.md · CHECKLIST.md
 │   └── state\                   se crea al ejecutar: logs y estado (los informes quedan en NodeDeploy_Run\)
 ├── Lab\                       ← laboratorio VMware: pruebas sin tocar el PC
-├── docs\                      ← HANDOFF: decisiones, pruebas y pendientes
-└── _Archivo\                  ← versiones antiguas e instaladores sin uso; ningún script lo usa (ver LEEME.md)
+└── docs\                      ← HANDOFF: decisiones, pruebas y pendientes
 ```
 
 ## Documentación
@@ -109,10 +112,10 @@ nodedeploy\
 | 0 | OK total |
 | 1 | Fallos parciales (tras reintentos) — revisar `POSTVALIDATE_REPORT.md` |
 | 2 | Source / config inválidos |
-| 3 | Reboot requerido — `Deploy.bat resume` tras reiniciar |
+| 3 | Reinicio requerido (instaladores o unión al dominio). Si quedó algo pendiente, tras reiniciar: `Deploy.bat resume` |
 | 4 | Sin permisos admin |
 | 5 | Prereq missing (PowerShell < 5.1) |
 
 ---
 
-_Última actualización: 2026-09-26 — NodeDeploy PRO v5.0.2_
+_Última actualización: 2026-09-26 — NodeDeploy PRO v5.1.0_

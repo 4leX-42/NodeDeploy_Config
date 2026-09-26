@@ -42,9 +42,6 @@ Lab/lab.local.json
 Lab/_build/
 Lab/results/
 
-# Versiones antiguas e instaladores sin uso: solo en el disco (lo versionado sigue en el historial)
-_Archivo/
-
 # Secretos ESET (certificado de agente / token de activacion): NUNCA al repo publico
 **/install_config.ini
 **/ESET_Endpoint/install.ini

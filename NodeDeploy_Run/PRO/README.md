@@ -9,8 +9,9 @@
 
 1. Conecta el M.2 con `nodedeploy\` (la ruta da igual, todo es relativo).
 2. Doble clic sobre `NodeDeploy_Run\PRO\Deploy.bat` y acepta el UAC.
-3. Espera: Notepad abre `POSTVALIDATE_REPORT.md` al terminar.
-4. Si el reporte indica **REBOOT REQUIRED**, reinicia y ejecuta `Deploy.bat resume`.
+3. Responde las preguntas del arranque: dominio (o `no`) + usuario del dominio, y contraseña del Administrador local.
+4. Espera: Notepad abre `POSTVALIDATE_REPORT.md` al terminar. Si todo quedó OK, el equipo ya tiene el Administrador local activo, `usuario` sin permisos de administrador y está unido al dominio.
+5. Si el reporte indica **REBOOT REQUIRED** (siempre tras unir al dominio), reinicia.
 
 ---
 
@@ -76,6 +77,25 @@ Diagnóstico adicional: `reg add "HKLM\SOFTWARE\InstallShield\29.0\Professional"
 
 ---
 
+## Cierre del equipo (v5.1, `Finalize.ps1`)
+
+Al arrancar (fases `full` / `install` / `resume`) se pregunta:
+
+1. **Dominio** al que unir el equipo, o `no`. Con dominio: usuario con permiso para unir equipos (si se escribe sin dominio, se usa `DOMINIO\usuario`) y su contraseña.
+2. **Contraseña del Administrador local** (dos veces).
+
+Al final, **solo si ninguna app quedó en fallo** (si no, se pospone y se hace al relanzar el script):
+
+| Orden | Acción | Notas |
+|---|---|---|
+| 1 | Activa el Administrador integrado (SID `-500`, "Administrador") con esa contraseña | |
+| 2 | Saca a `usuario` del grupo Administradores (SID `S-1-5-32-544`) | Solo si el paso 1 fue bien: nunca deja el equipo sin administrador local. |
+| 3 | Une el equipo al dominio | Lo último. Pide reinicio (exit 3). Si ya estaba en ese dominio, no hace nada. |
+
+Las contraseñas solo están en memoria: no van a log, state ni informe. El resultado sale en la sección **Cierre del equipo** del informe. Probado en la VM (`Lab\guest\Test-Finalize.ps1`); nunca en el PC del técnico.
+
+---
+
 ## Modos y parámetros
 
 | Comando | Acción |
@@ -100,7 +120,10 @@ Los parámetros extra se pasan tal cual a `Deploy.ps1` (`Deploy.bat full -SkipAV
 | `-MaxRetries N` | Reintentos por app (default 2 → 3 intentos). |
 | `-NoDefenderBoost` | Sin exclusiones temporales de Defender. |
 | `-ForceReinstall` | Ignora la detección de "ya instalado". |
-| `-DryRun` | Simula (no instala nada). `NODEDEPLOY_DRYRUN_SCALE`, `NODEDEPLOY_DRYRUN_FAIL="AqNet:1618:2"`. |
+| `-DryRun` | Simula (no instala nada, no pregunta, no toca cuentas). `NODEDEPLOY_DRYRUN_SCALE`, `NODEDEPLOY_DRYRUN_FAIL="AqNet:1618:2"`. |
+| `-Domain nombre` / `-Domain no` | Responde de antemano la pregunta del dominio. |
+| `-StandardUser nombre` | Cuenta que sale de Administradores (default `usuario`). |
+| `-NoFinalize` | Sin preguntas ni cierre del equipo (laboratorio / pruebas). |
 
 ---
 
@@ -152,4 +175,4 @@ state\
 
 ---
 
-_NodeDeploy PRO v5.0.2 · 2026-09-26_
+_NodeDeploy PRO v5.1.0 · 2026-09-26_

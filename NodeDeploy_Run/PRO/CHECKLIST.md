@@ -66,6 +66,16 @@ Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Office\Outlook\Addins\*',
 
 LoadBehavior esperado: `3` (load at startup, connected).
 
+## Cierre del equipo (Administrador / usuario / dominio)
+
+Mira la sección **Cierre del equipo** de `POSTVALIDATE_REPORT.md`, o a mano:
+
+```powershell
+Get-LocalUser | Where-Object { $_.SID -like '*-500' } | Format-Table Name,Enabled   # Administrador: Enabled=True
+Get-LocalGroupMember -SID S-1-5-32-544 | Format-Table Name,PrincipalSource         # sin 'usuario'
+(Get-CimInstance Win32_ComputerSystem) | Format-List Domain,PartOfDomain            # dominio tras reiniciar
+```
+
 ## Reboot recommendation
 
 Tras instalación de:
@@ -128,4 +138,4 @@ Si reporta `MISSING=0` (las apps saltadas a propósito salen como `SKIPPED`), to
 
 ---
 
-_NodeDeploy PRO v5.0 — Outlook clásico = OUTLOOK.EXE junto al Word de fábrica; AV opcional con -SkipAV (laboratorio)._
+_NodeDeploy PRO v5.1 — Outlook clásico = OUTLOOK.EXE junto al Word de fábrica; AV opcional con -SkipAV (laboratorio)._

@@ -28,7 +28,8 @@ if ($HoldMsiSeconds -gt 0) {
 }
 
 $ps1 = "$root\NodeDeploy_Run\PRO\Deploy.ps1"
-$cmd = "& '$ps1' -Phase full -SkipAV $ExtraArgs; exit `$LASTEXITCODE"
+# -NoFinalize: sin preguntas interactivas (dominio / contrasena) ni cambios de cuentas en la VM.
+$cmd = "& '$ps1' -Phase full -SkipAV -NoFinalize $ExtraArgs; exit `$LASTEXITCODE"
 $sw = [Diagnostics.Stopwatch]::StartNew()
 # Sin -Wait: Start-Process -Wait espera tambien a los hijos que quedan residentes
 # (OfficeC2RClient, iManageStayExec...) y el wrapper no terminaba nunca.

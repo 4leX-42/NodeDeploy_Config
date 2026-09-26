@@ -11,7 +11,7 @@ $share = '\\vmware-host\Shared Folders\nodedeploy'
 $log   = 'C:\LabRun\sync.log'
 New-Item -ItemType Directory -Force -Path 'C:\LabRun', $Target | Out-Null
 
-$excludeDirs  = @('.git', '.claude', 'Lab', '_Archivo', 'docs', 'Office', 'state')
+$excludeDirs  = @('.git', '.claude', 'Lab', 'docs', 'Office', 'state')
 $avFiles      = @('eset_msi.msi', 'MDR_Windows_Andersen_8_2_x64.msi', 'epi_win_live_installer.exe', 'install_config.ini')
 $excludeFiles = $avFiles + @('*.log')
 
