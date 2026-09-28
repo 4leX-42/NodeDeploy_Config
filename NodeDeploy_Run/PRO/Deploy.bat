@@ -16,6 +16,7 @@ REM     Deploy.bat full -NoDefenderBoost     (sin exclusiones temporales de Defe
 REM     Deploy.bat full -Domain no           (responde "no" a la pregunta del dominio; -Domain 3 = sede 3 de Dominios.txt)
 REM     Deploy.bat full -NoFinalize          (sin preguntas ni cierre: Administrador / usuario / dominio)
 REM     Deploy.bat full -TimeZone "GMT Standard Time"   (zona horaria; por defecto Madrid si no es de Espana; no = no tocar)
+REM     Deploy.bat full -NoWindowsUpdate     (sin Windows Update)   -NoLenovoUpdates / -NoBIOS (Lenovo)
 REM  Al arrancar pregunta dominio (o "no"), usuario del dominio y contrasena del Administrador local;
 REM  al final, solo si todo queda OK: Administrador activo, "usuario" fuera de Administradores y dominio.
 REM

@@ -105,6 +105,10 @@ Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer' | Select-O
 Get-ItemProperty 'HKLM:\SOFTWARE\PDF24' | Select-Object '!NoOnlineConverter','!NoOnlinePdfTools','!NoFax',UpdateMode   # 1 / 1 / 1 / 2
 ```
 
+## Windows Update
+
+Sección **Windows Update** de `POSTVALIDATE_REPORT.md`: instaladas, con fallo y no instaladas (cambios de versión de Windows y versiones preliminares se saltan a propósito). Tras el reinicio, en Configuración → Windows Update no debería quedar nada pendiente salvo lo opcional.
+
 ## Actualizaciones Lenovo
 
 Sección **Actualizaciones Lenovo** de `POSTVALIDATE_REPORT.md`: instaladas, con fallo, no instaladas (con el motivo) y pendiente de reinicio. Si pone "sin cargador", conecta el cargador y relanza `Deploy.bat resume` para el firmware/BIOS. Tras el reinicio, en Commercial Vantage no debería quedar nada crítico pendiente.

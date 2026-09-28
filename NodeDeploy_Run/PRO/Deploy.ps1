@@ -71,6 +71,9 @@
     Si Lenovo pide apagar (algun firmware), se apaga.
     v5.5.3: dominio con menu numerado (Dominios.txt junto a los scripts, fuera de git): 1..N sedes, N+1 = otro a
     mano, 0 = sin dominio. -Domain admite el numero de la lista.
+    v5.6.0: Windows Update (WindowsUpdate.ps1, agente de Windows Update) en segundo plano desde t=0: software
+    (acumulativa, seguridad, .NET...) en paralelo a las apps; controladores al terminar apps y Lenovo. Nunca cambio
+    de version de Windows. El reinicio entra en el automatico del final. -NoWindowsUpdate lo omite.
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -108,7 +111,8 @@ param(
     [switch]$NoOptimize,                 # sin optimizacion de Windows (Optimize.ps1)
     [switch]$NoLenovoUpdates,            # sin actualizaciones de Lenovo (Lenovo.ps1)
     [switch]$NoBIOS,                     # actualizaciones de Lenovo sin firmware/BIOS
-    [string]$TimeZone = 'Romance Standard Time'   # zona horaria si la del equipo no es de Espana; 'no' = no tocar la hora
+    [string]$TimeZone = 'Romance Standard Time',  # zona horaria si la del equipo no es de Espana; 'no' = no tocar la hora
+    [switch]$NoWindowsUpdate             # sin actualizaciones de Windows Update (WindowsUpdate.ps1)
 )
 
 # ============================================================
@@ -121,7 +125,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.5.3'
+$Script:Version       = '5.6.0'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -814,7 +818,7 @@ function Get-AutoRebootDecision {
     # Why = lo que falta para poder reiniciar solo; Need = lo que pide reiniciar. Solo hay Action si no falta nada
     # (apps OK, Administrador activo, cuenta estandar fuera de Administradores, paso del dominio hecho: unido, ya
     # estaba o "no"; Lenovo sin fallos) y algo pide reiniciar. Si Lenovo pide apagar (algun firmware), se apaga.
-    param($Records, [string[]]$MissingApps, $FinalizeStatus, $LenovoResult, [bool]$WindowsPending)
+    param($Records, [string[]]$MissingApps, $FinalizeStatus, $LenovoResult, [bool]$WindowsPending, $WuResult)
     $fs = $FinalizeStatus
     $notOk = @($Records | Where-Object { $_.status -notin 'ok', 'ok_reboot' } | ForEach-Object { "$($_.name)=$($_.status)" })
     $why = @()
@@ -824,12 +828,14 @@ function Get-AutoRebootDecision {
     if (-not ($fs -and $fs.UserOk))     { $why += 'cuenta estandar sin quitar de Administradores' }
     if (-not ($fs -and $fs.DomainDone)) { $why += 'falta el paso del dominio (la union no se completo)' }
     if ($LenovoResult -and @($LenovoResult.failed).Count) { $why += 'actualizaciones de Lenovo con fallos' }
+    if ($WuResult -and @($WuResult.failed).Count)         { $why += 'Windows Update con fallos o sin terminar' }
     $lnPend = @(if ($LenovoResult) { $LenovoResult.pending })
     $need = @()
     if ($fs -and $fs.DomainJoined)          { $need += 'union al dominio' }
     if ($lnPend -match 'REBOOT|SHUTDOWN')   { $need += 'firmware/BIOS de Lenovo' }
     if (@($Records | Where-Object { $_.status -eq 'ok_reboot' }).Count) { $need += 'instaladores' }
-    if ($WindowsPending)                    { $need += 'Windows lo pide' }
+    if ($WuResult -and $WuResult.reboot)    { $need += 'Windows Update' }
+    elseif ($WindowsPending)                { $need += 'Windows lo pide' }
     $act = if ($why.Count -or -not $need.Count) { $null } elseif ($lnPend -contains 'SHUTDOWN') { 'apagar' } else { 'reiniciar' }
     return [pscustomobject]@{ Action = $act; Need = $need; Why = $why }
 }
@@ -1671,6 +1677,17 @@ function Write-FinalReport {
         if (@($lr.notes).Count)   { [void]$sb.AppendLine("- **Notas:** $(@($lr.notes) -join '; ')") }
         [void]$sb.AppendLine('')
     }
+    if ($Script:WuResult) {
+        $wr = $Script:WuResult
+        [void]$sb.AppendLine('## Windows Update')
+        [void]$sb.AppendLine('')
+        [void]$sb.AppendLine("- **Instaladas ($(@($wr.installed).Count)):** $(if (@($wr.installed).Count) { @($wr.installed) -join '; ' } else { 'ninguna' })")
+        if (@($wr.failed).Count)  { [void]$sb.AppendLine("- **Con fallo ($(@($wr.failed).Count)):** $(@($wr.failed) -join '; ')") }
+        if (@($wr.skipped).Count) { [void]$sb.AppendLine("- **No instaladas ($(@($wr.skipped).Count)):** $(@($wr.skipped) -join '; ')") }
+        if ($wr.reboot)           { [void]$sb.AppendLine('- **Pendiente:** reinicio para terminar de aplicar las actualizaciones') }
+        if (@($wr.notes).Count)   { [void]$sb.AppendLine("- **Notas:** $(@($wr.notes) -join '; ') | $($wr.seconds) s") }
+        [void]$sb.AppendLine('')
+    }
     if ($Script:PolicyResult -and $Script:PolicyResult.Count) {
         [void]$sb.AppendLine('## Configuracion de apps')
         [void]$sb.AppendLine('')
@@ -1783,6 +1800,18 @@ if (($Phase -in 'full','install','resume') -and -not $DryRun -and -not $NoLenovo
     } else {
         Write-Log "Sin actualizaciones de Lenovo: el equipo es $mfr" 'INFO'
     }
+}
+
+# Windows Update en segundo plano: software ya (en paralelo a las apps); controladores al terminar apps y Lenovo.
+$Script:WuProc = $null; $Script:WuResult = $null
+$Script:WuPs1    = Join-Path $Script:ScriptDir 'WindowsUpdate.ps1'
+$Script:WuJson   = Join-Path $Script:LogDir 'windows_update.json'
+$Script:WuSignal = Join-Path $Script:LogDir 'wu_continuar.flag'
+if (($Phase -in 'full','install','resume') -and -not $DryRun -and -not $NoWindowsUpdate -and (Test-Path $Script:WuPs1)) {
+    Remove-Item -LiteralPath $Script:WuJson, $Script:WuSignal -Force -ErrorAction SilentlyContinue
+    $Script:WuProc = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -PassThru `
+        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Script:WuPs1)`" -WuMode run -OutJson `"$($Script:WuJson)`" -SignalFile `"$($Script:WuSignal)`""
+    Write-Log 'Windows Update en segundo plano: actualizaciones de software ya; controladores al terminar las apps y Lenovo' 'INFO'
 }
 
 $State = Get-State
@@ -1971,6 +2000,28 @@ if ($Script:LenovoProc) {
     }
 }
 
+# Windows Update: con apps y Lenovo terminados, via libre para sus controladores; se espera a que acabe (no se
+# reinicia con Windows instalando).
+if ($Script:WuProc) {
+    Write-Step 'WINDOWS UPDATE'
+    Set-Content -LiteralPath $Script:WuSignal -Value (Get-Date -Format 'o') -Encoding ASCII
+    if (-not $Script:WuProc.HasExited) {
+        Write-Log 'Esperando a Windows Update (actualizaciones y controladores; max. 45 min)...' 'INFO'
+        [void]$Script:WuProc.WaitForExit(2700000)
+    }
+    if (-not $Script:WuProc.HasExited) {
+        $Script:WuResult = [ordered]@{ found = 0; installed = @(); failed = @('no termino en 45 min: sigue en segundo plano (no apagues el equipo)'); skipped = @(); reboot = $false; notes = @() }
+        Write-Log 'Windows Update: no termino en 45 min, sigue en segundo plano' 'WARN'
+    } elseif (Test-Path -LiteralPath $Script:WuJson) {
+        $Script:WuResult = Get-Content -LiteralPath $Script:WuJson -Raw | ConvertFrom-Json
+        $wr = $Script:WuResult
+        if ($wr.reboot) { $State.reboot_required = $true }
+        Write-Log ("Windows Update: {0} instaladas, {1} con fallo, {2} omitidas en {3} s{4}" -f @($wr.installed).Count, @($wr.failed).Count, @($wr.skipped).Count, $wr.seconds, $(if ($wr.reboot) { ' | pide reinicio' })) $(if (@($wr.failed).Count) { 'WARN' } else { 'OK' })
+    } else {
+        $Script:WuResult = [ordered]@{ found = 0; installed = @(); failed = @('sin resultado'); skipped = @(); reboot = $false; notes = @() }
+    }
+}
+
 # Optimizacion de Windows: resultado de la limpieza + arranque (las entradas ya existen: apps instaladas).
 if ($Script:DoOptimize -and (Get-Command Set-StartupPolicy -ErrorAction SilentlyContinue)) {
     Write-Step 'OPTIMIZACION DE WINDOWS'
@@ -2020,7 +2071,7 @@ if ($Script:FinalizeAnswers) {
     # estandar fuera de Administradores y paso del dominio hecho: unido, ya estaba o "no") y algo pide reiniciar
     # (union al dominio, firmware/BIOS de Lenovo, instaladores o Windows). Si Lenovo pide apagar, se apaga.
     $dec = Get-AutoRebootDecision -Records @(Get-AllRecords $State) -MissingApps @($Script:Apps | Where-Object { -not (Get-AppRecord $State $_.Name) } | ForEach-Object { $_.Name }) `
-        -FinalizeStatus $Script:FinalizeStatus -LenovoResult $Script:LenovoResult -WindowsPending ([bool](Test-PendingReboot).HardPending)
+        -FinalizeStatus $Script:FinalizeStatus -LenovoResult $Script:LenovoResult -WindowsPending ([bool](Test-PendingReboot).HardPending) -WuResult $Script:WuResult
     if ($dec.Action) {
         Set-Content -LiteralPath $Script:AutoRebootFlag -Value @($dec.Action, ($dec.Need -join ', ')) -Encoding ASCII
         $Script:FinalizeResult['Reinicio automatico'] = "si: $($dec.Action) en 15 s tras la validacion ($($dec.Need -join ', ')); shutdown /a para cancelar"

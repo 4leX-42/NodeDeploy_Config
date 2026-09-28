@@ -9,7 +9,7 @@
    - **contraseña del Administrador local** (dos veces).
    
    Si relanzas el script en un equipo ya terminado, no vuelve a preguntar lo ya hecho (Administrador activado, equipo en dominio).
-4. Espera (~7 min, más las actualizaciones de Lenovo si hay muchas). Mientras instala, en segundo plano, **optimiza Windows** (quita apps de Store que sobran, publicidad, Bing, widgets) y **actualiza controladores, firmware y BIOS de Lenovo** (como Commercial Vantage, sin abrirlo). Al final deja sin arrancar con Windows PDFelement, PDF24, Everything, b4notify y Edge (AnyDesk siempre activo), ancla Outlook y Teams a la barra de tareas (sin Microsoft Store) y, si todas las apps quedan OK: Administrador local activado, la cuenta `usuario` (o `user`) fuera de Administradores y, lo último, unión al dominio. Si TODO quedó verificado (apps, validación, Administrador, cuenta estándar y paso del dominio: unido o `no`) y algo pide reiniciar (dominio, BIOS/firmware de Lenovo, instaladores), **reinicia solo a los 15 s** (`shutdown /a` lo cancela), siempre después del dominio; si un firmware de Lenovo pide apagar, apaga. Si no, el informe dice por qué.
+4. Espera (~15-20 min; más si hay muchas actualizaciones de Lenovo o de Windows). Mientras instala, en segundo plano, **optimiza Windows** (quita apps de Store que sobran, publicidad, Bing, widgets), **actualiza controladores, firmware y BIOS de Lenovo** (como Commercial Vantage, sin abrirlo) e **instala las actualizaciones de Windows Update**. Al final deja sin arrancar con Windows PDFelement, PDF24, Everything, b4notify y Edge (AnyDesk siempre activo), ancla Outlook y Teams a la barra de tareas (sin Microsoft Store) y, si todas las apps quedan OK: Administrador local activado, la cuenta `usuario` (o `user`) fuera de Administradores y, lo último, unión al dominio. Si TODO quedó verificado (apps, validación, Administrador, cuenta estándar y paso del dominio: unido o `no`) y algo pide reiniciar (dominio, BIOS/firmware de Lenovo, instaladores), **reinicia solo a los 15 s** (`shutdown /a` lo cancela), siempre después del dominio; si un firmware de Lenovo pide apagar, apaga. Si no, el informe dice por qué.
 
 **Valida con**: `NodeDeploy_Run\POSTVALIDATE_REPORT.md` (estado + cronograma por app, duraciones en min y s) y `Validate_Report.md`.
 
@@ -33,6 +33,7 @@ Al terminar (full / install / resume / validate) se abren `lusrmgr.msc` y `sysdm
 | Sin preguntas ni cierre (Administrador / usuario / dominio) | `Deploy.bat full -NoFinalize` |
 | Sin optimización de Windows | `Deploy.bat full -NoOptimize` |
 | Sin actualizaciones de Lenovo / solo sin BIOS ni firmware | `Deploy.bat full -NoLenovoUpdates` / `-NoBIOS` |
+| Sin Windows Update | `Deploy.bat full -NoWindowsUpdate` |
 | Portátil de Canarias / no tocar la hora | `Deploy.bat full -TimeZone "GMT Standard Time"` / `-TimeZone no` |
 | Repetir apps que fallaron | desinstalarlas y relanzar: el script salta lo ya instalado |
 | Sin paralelismo (diagnóstico) | `Deploy.bat full -Serial` |
@@ -56,8 +57,12 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
      ├─ Carril EXE (NSIS/Inno/MSIX, en paralelo) ──────────────────────────────────────────┤
      │   Bit4id → PDFelement → Autofirma (después de Chrome) → NanaZip                     │
      │                                                                                     │
-     └─ Lenovo (background, Lenovo.ps1) ── controladores ya; red + firmware/BIOS al final ─┘
+     ├─ Lenovo (background, Lenovo.ps1) ── controladores ya; red + firmware/BIOS al final ─┤
+     │                                                                                     │
+     └─ Windows Update (background, WindowsUpdate.ps1) ── software ya; drivers al final ───┘
 ```
+
+**Windows Update** (`WindowsUpdate.ps1`, el agente de Windows Update de Windows, sin módulos externos): lo mismo que "Descargar e instalar todo" de Configuración. Las de software (acumulativa, seguridad, .NET, herramienta de eliminación de software malintencionado, Defender) se descargan e instalan desde t=0, en paralelo a las apps; los controladores de Windows Update, al terminar las apps y Lenovo (así no se pisan con los de Lenovo); firmware solo con cargador. Nunca cambia de versión de Windows (actualizaciones de características) ni instala versiones preliminares. El reinicio que pidan entra en el reinicio automático del final. Resultado en el informe, sección "Windows Update".
 
 **Actualizaciones Lenovo** (`Lenovo.ps1`, módulo oficial `Lenovo.Client.Update`, el mismo catálogo por modelo que Commercial Vantage): solo lo aplicable al equipo, desatendido y crítico/recomendado. Los controladores se instalan mientras van las apps; los de red (LAN/WiFi/WWAN), cuando terminan las apps (no cortan descargas); firmware y BIOS, lo último, **solo con el cargador conectado** y con BitLocker en pausa: se graban en el reinicio final. Nunca instala lo que reinicia al momento (p. ej. firmware de docks) ni reinicia por su cuenta. Resultado en el informe, sección "Actualizaciones Lenovo".
 
@@ -100,7 +105,7 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
 | Barra de tareas | Explorador, Edge, **Outlook clásico y Teams**; **sin Microsoft Store**. XML + directiva "Diseño de inicio" (método de Microsoft): todos los usuarios, también los del dominio, al iniciar sesión | al final |
 | Comprobaciones | TRIM del SSD (se activa si estuviera apagado), software del fabricante a revisar (antivirus de prueba = choca con ESET/Cortex), lo que sigue arrancando con Windows | al final, en el informe |
 
-No se hace, a propósito: `winget upgrade --all` (cambiaría versiones validadas de las apps corporativas y alarga mucho), nada de Windows Update (el portátil ya se actualiza solo al iniciar), cambiar el plan de energía (son portátiles), desinstalar solo el software del fabricante (se informa para revisarlo). La lista de apps a quitar está al principio de `Optimize.ps1`.
+No se hace, a propósito: `winget upgrade --all` (cambiaría versiones validadas de las apps corporativas y alarga mucho), actualizaciones de características de Windows (cambio de versión: horas y riesgo), cambiar el plan de energía (son portátiles), desinstalar solo el software del fabricante (se informa para revisarlo). La lista de apps a quitar está al principio de `Optimize.ps1`.
 
 ---
 

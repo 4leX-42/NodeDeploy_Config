@@ -109,7 +109,7 @@ Las contraseñas solo están en memoria: no van a log, state ni informe. El resu
 
 - **Segundo plano desde t=0** (no alarga el despliegue): quita las apps de Store que sobran (lista `$Script:DebloatApps` al principio del fichero) para usuarios actuales y futuros, y aplica directivas contra publicidad, apps que se instalan solas, sugerencias de Bing, widgets y chat (equipo + usuario actual + perfil por defecto). Nunca toca Store, Calculadora, Fotos, Terminal, códecs, winget, apps de Lenovo ni NanaZip.
 - **Al final:** "Aplicaciones de arranque" con PDFelement, PDF24, Everything y b4notify **deshabilitados** (mismo sitio que el Administrador de tareas, en HKLM: un usuario sin admin no puede reactivarlos); Edge sin startup boost ni segundo plano (directiva); AnyDesk obligatorio (servicio automático y en marcha, reinicio si se cae, entrada habilitada y sin botón Desinstalar). Los servicios de PDF24 (impresora) y Everything (índice) se mantienen.
-- **Comprobaciones en el informe:** TRIM, software del fabricante a revisar (no se desinstala solo; Lenovo se respeta), lo que sigue arrancando con Windows. Windows Update no se toca (desde v5.5): el portátil ya se actualiza solo al iniciar.
+- **Comprobaciones en el informe:** TRIM, software del fabricante a revisar (no se desinstala solo; Lenovo se respeta), lo que sigue arrancando con Windows. Windows Update: ver su sección (v5.6, `WindowsUpdate.ps1`).
 - **Barra de tareas** (al final): Explorador, Edge, Outlook clásico y Teams (el de empresa `MSTeams`; si solo está el personal, ese), **sin Microsoft Store**. XML `C:\ProgramData\NodeDeploy\TaskbarLayout.xml` + directiva "Diseño de inicio" del equipo (`LockedStartLayout` / `StartLayoutFile`, método documentado por Microsoft para Windows 11): vale para todos los usuarios, también los del dominio, al iniciar sesión. El usuario puede anclar o desanclar después.
 - El registro se vuelca a disco nada más aplicar los cambios (un apagado brusco justo después los perdía; visto en el laboratorio).
 
@@ -127,6 +127,18 @@ Proceso aparte desde t=0, solo en equipos Lenovo, con el módulo oficial `Lenovo
 | Reinicio forzado inmediato (tipo 1, p. ej. firmware de docks) o no desatendidas | nunca |
 
 No reinicia a mitad: informa de lo pendiente en la sección **Actualizaciones Lenovo** del informe y el reinicio (o apagado, si el firmware lo pide) lo hace el reinicio automático del final, después del dominio. Deploy.ps1 espera a que acabe (máx. 30 min) antes del cierre del equipo. `-NoLenovoUpdates` lo omite; `-NoBIOS` deja fuera firmware y BIOS.
+
+## Windows Update (v5.6, `WindowsUpdate.ps1`)
+
+Proceso aparte desde t=0 con el agente de Windows Update (API COM `Microsoft.Update.Session` de Windows, sin módulos externos): lo mismo que "Descargar e instalar todo" de Configuración.
+
+| Qué | Cuándo |
+|---|---|
+| Software: acumulativa, seguridad, .NET, herramienta de eliminación de software malintencionado, Defender (`Type='Software' and BrowseOnly=0`) | desde t=0, en paralelo a las apps |
+| Controladores de Windows Update (`Type='Driver' and BrowseOnly=0`) | al terminar las apps y Lenovo (después de los de Lenovo, para no pisarse); firmware solo con cargador y BitLocker en pausa |
+| Actualizaciones de características (cambio de versión de Windows) y versiones preliminares | nunca |
+
+Si Windows está instalando otra cosa (`WU_E_INSTALL_NOT_ALLOWED`), espera y reintenta. No reinicia: si hace falta, entra en el reinicio automático del final (después del dominio). Deploy.ps1 espera a que termine (máx. 45 min); con fallos o sin terminar, no hay reinicio automático. Sección **Windows Update** del informe. `-NoWindowsUpdate` lo omite.
 
 ## Hora del equipo (v5.5.1, al arrancar)
 
@@ -170,6 +182,7 @@ Los parámetros extra se pasan tal cual a `Deploy.ps1` (`Deploy.bat full -SkipAV
 | `-NoFinalize` | Sin preguntas ni cierre del equipo (laboratorio / pruebas). |
 | `-NoOptimize` | Sin optimización de Windows (`Optimize.ps1`: limpieza de apps, publicidad, arranque, barra de tareas, TRIM). |
 | `-NoLenovoUpdates` | Sin actualizaciones de Lenovo (`Lenovo.ps1`). |
+| `-NoWindowsUpdate` | Sin actualizaciones de Windows Update (`WindowsUpdate.ps1`). |
 | `-NoBIOS` | Actualizaciones de Lenovo sin firmware ni BIOS. |
 | `-TimeZone id` / `-TimeZone no` | Zona horaria (por defecto `Romance Standard Time`, Madrid, solo si la del equipo no es de España; Canarias = `GMT Standard Time`). `no` = no tocar la hora. |
 

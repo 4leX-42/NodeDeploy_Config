@@ -19,7 +19,7 @@
     Set-TaskbarLayout (al final): barra de tareas de todos los usuarios con Explorador, Edge, Outlook clásico y Teams,
       sin Microsoft Store (XML + directiva "Diseño de inicio"; se aplica al iniciar sesión).
     Get-OptimizeChecks: TRIM del SSD, software del fabricante que conviene revisar (no se toca Lenovo Vantage)
-    y lo que sigue arrancando con Windows. Windows Update no se toca: el portátil ya se actualiza al iniciar.
+    y lo que sigue arrancando con Windows. Windows Update lo hace WindowsUpdate.ps1 (proceso aparte).
 
     Uso suelto (lo lanza Deploy.ps1): Optimize.ps1 -OptimizeMode debloat -OptimizeOutJson <ruta>
 #>
