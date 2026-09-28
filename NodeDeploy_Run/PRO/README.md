@@ -128,7 +128,13 @@ Proceso aparte desde t=0, solo en equipos Lenovo, con el módulo oficial `Lenovo
 
 Nunca reinicia por su cuenta: informa de lo pendiente en la sección **Actualizaciones Lenovo** del informe. Deploy.ps1 espera a que acabe (máx. 30 min) antes del cierre del equipo. `-NoLenovoUpdates` lo omite; `-NoBIOS` deja fuera firmware y BIOS.
 
+## Hora del equipo (v5.5.1, al arrancar)
+
+Antes de descargar nada: zona horaria de España (si la del equipo no es Madrid ni Canarias, se pone `-TimeZone`, por defecto Madrid) y reloj en hora con la cabecera `Date` de `www.msftconnecttest.com` (plan B `www.google.com`) por HTTP, que no depende del reloj local. Windows no corrige solo un desfase grande (límite `MaxPhaseCorrection`) y muchas redes cortan NTP; con la hora mal fallan las conexiones seguras (descargas, AnyDesk sin ID) y la unión al dominio (Kerberos). Deja el servicio de hora de Windows (W32Time) automático; en el dominio sincroniza con el controlador. Sale en la cabecera del informe (**Hora:**).
+
 ## Configuración de apps (v5.5, campo `Policy` del catálogo)
+
+**AnyDesk** (`Test-AnyDeskHealth`, en cada pasada): servicio `AnyDesk-<id>_msi` automático y en marcha, ejecutable presente y conectado a la red de AnyDesk (`AnyDesk-<id>_msi.exe --get-id`, hasta 60 s). Si falta el servicio o el ejecutable (instalación a medias) reinstala el MSI (`REINSTALL=ALL REINSTALLMODE=amus`); si no hay ID reinicia el servicio y vuelve a esperar. La ventana que abre el instalador al terminar (antes de que el servicio conecte, podía quedarse a medias) se cierra y se reabre como usuario normal. El **ID** sale en la sección **Configuracion de apps** del informe y en `Validate_Report.md`; si no hay ID, el informe dice si responde `boot.net.anydesk.com:443` y los últimos errores de `ad_svc.trace` (hora del equipo, red, proxy o antivirus: puertos 80, 443 y 6568).
 
 Tras las instalaciones, en cada pasada (también si la app ya estaba), se escriben los valores de registro del catálogo. Hoy, PDF24 (`HKLM\SOFTWARE\PDF24`, manual oficial v11; `!` = el valor del equipo manda sobre el del usuario): sin conversor online, enlaces a herramientas web, fax ni correo de PDF24; sin JavaScript en su lector; sin actualizaciones ni botones de actualizar; WebView2 del sistema; y en el escritorio solo PDF24 Toolbox. Sale en la sección **Configuracion de apps** del informe y lo comprueba `Validate.ps1`.
 
@@ -165,6 +171,7 @@ Los parámetros extra se pasan tal cual a `Deploy.ps1` (`Deploy.bat full -SkipAV
 | `-NoOptimize` | Sin optimización de Windows (`Optimize.ps1`: limpieza de apps, publicidad, arranque, barra de tareas, TRIM). |
 | `-NoLenovoUpdates` | Sin actualizaciones de Lenovo (`Lenovo.ps1`). |
 | `-NoBIOS` | Actualizaciones de Lenovo sin firmware ni BIOS. |
+| `-TimeZone id` / `-TimeZone no` | Zona horaria (por defecto `Romance Standard Time`, Madrid, solo si la del equipo no es de España; Canarias = `GMT Standard Time`). `no` = no tocar la hora. |
 
 ---
 

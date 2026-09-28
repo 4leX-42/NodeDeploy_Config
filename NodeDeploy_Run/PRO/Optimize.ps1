@@ -14,6 +14,8 @@
       - Edge sin arranque en segundo plano (directivas StartupBoostEnabled / BackgroundModeEnabled);
       - AnyDesk obligatorio: servicio automático y arrancado, reinicio si se cae, entrada de inicio habilitada
         y sin botón Desinstalar.
+    Test-AnyDeskHealth (al terminar las apps; lo llama Deploy.ps1 siempre): AnyDesk entero, en marcha y con ID;
+      repara una instalación a medias y deja el ID en el informe.
     Set-TaskbarLayout (al final): barra de tareas de todos los usuarios con Explorador, Edge, Outlook clásico y Teams,
       sin Microsoft Store (XML + directiva "Diseño de inicio"; se aplica al iniciar sesión).
     Get-OptimizeChecks: TRIM del SSD, software del fabricante que conviene revisar (no se toca Lenovo Vantage)
@@ -166,6 +168,68 @@ function Set-StartupPolicy {
     }
     Invoke-RegistryFlush
     return $res
+}
+
+function Get-AnyDeskService {
+    # Servicio de AnyDesk (el cliente propio se llama AnyDesk-<id>_msi) y su ejecutable, sacado de la ruta del servicio.
+    $svc = Get-CimInstance Win32_Service -Filter "Name LIKE 'AnyDesk%'" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $svc) { return $null }
+    $exe = if ("$($svc.PathName)" -match '^\s*"([^"]+)"') { $matches[1] } else { ("$($svc.PathName)" -split '\s+--')[0].Trim() }
+    return [pscustomobject]@{ Name = $svc.Name; State = $svc.State; StartMode = $svc.StartMode; Exe = $exe }
+}
+
+function Get-AnyDeskId {
+    # "AnyDesk.exe --get-id" devuelve el ID cuando el servicio ya esta conectado a la red de AnyDesk.
+    param([string]$Exe, [int]$WaitSec = 0)
+    $deadline = (Get-Date).AddSeconds($WaitSec)
+    do {
+        $id = "$(& $Exe --get-id 2>$null | Out-String)".Trim()
+        if ($id -match '^\d{9,10}$') { return $id }
+        if ($WaitSec) { Start-Sleep -Seconds 5 }
+    } while ((Get-Date) -lt $deadline)
+    return $null
+}
+
+function Test-AnyDeskHealth {
+    # AnyDesk tiene que quedar entero y con ID. Si falta el servicio o el ejecutable (instalacion a medias), se
+    # reinstala el MSI (REINSTALL=ALL: ficheros, registro, accesos directos y servicio); si no hay ID, se reinicia
+    # el servicio. Devuelve el texto del informe.
+    param([string]$Msi)
+    $notes = @()
+    $ad = Get-AnyDeskService
+    if ((-not $ad -or -not (Test-Path -LiteralPath $ad.Exe)) -and $Msi -and (Test-Path -LiteralPath $Msi)) {
+        $p = Start-Process -FilePath 'msiexec.exe' -ArgumentList "/i `"$Msi`" REINSTALL=ALL REINSTALLMODE=amus /qn /norestart" -Wait -PassThru -WindowStyle Hidden
+        $notes += "reparado (msiexec $($p.ExitCode))"
+        $ad = Get-AnyDeskService
+    }
+    if (-not $ad) { return 'ERROR: no hay servicio de AnyDesk (instalacion a medias; reinstala AnyDesk.msi)' }
+    if (-not (Test-Path -LiteralPath $ad.Exe)) { return "ERROR: falta $($ad.Exe)" }
+    if ($ad.StartMode -ne 'Auto') { Set-Service -Name $ad.Name -StartupType Automatic }
+    if ($ad.State -ne 'Running') { Start-Service -Name $ad.Name -ErrorAction SilentlyContinue; $notes += 'servicio arrancado' }
+    $id = Get-AnyDeskId -Exe $ad.Exe -WaitSec 60
+    if (-not $id) {
+        Restart-Service -Name $ad.Name -Force -ErrorAction SilentlyContinue; $notes += 'servicio reiniciado'
+        $id = Get-AnyDeskId -Exe $ad.Exe -WaitSec 60
+    }
+    # La ventana que abre el instalador nada mas terminar (antes de que el servicio conecte) puede quedarse a medias:
+    # se cierra y, si estaba abierta, se abre de nuevo como usuario normal (via explorer, como el acceso de inicio).
+    $ui = @(Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($ad.Exe)) -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -ne 0 })
+    if ($ui) {
+        $ui | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        $lnk = Get-ChildItem -Path (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\StartUp') -Filter 'AnyDesk*.lnk' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($lnk) { Start-Process -FilePath (Join-Path $env:WINDIR 'explorer.exe') -ArgumentList "`"$($lnk.FullName)`"" }
+    }
+    $extra = if ($notes) { " ($($notes -join ', '))" } else { '' }
+    if ($id) { return "ID $($id -replace '(\d)(?=(\d{3})+$)', '$1 ')$extra" }
+    # Sin ID: diagnostico para el informe (conexion con AnyDesk y ultimos errores de su log)
+    $net = try {
+        $tcp = New-Object Net.Sockets.TcpClient
+        if ($tcp.ConnectAsync('boot.net.anydesk.com', 443).Wait(5000) -and $tcp.Connected) { 'boot.net.anydesk.com:443 responde' } else { 'boot.net.anydesk.com:443 NO responde (firewall/proxy)' }
+    } catch { "boot.net.anydesk.com: $($_.Exception.InnerException.Message)" } finally { if ($tcp) { $tcp.Dispose() } }
+    $trace = Get-ChildItem -Path "$env:ProgramData\AnyDesk*\ad_svc.trace" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1
+    $errs = if ($trace) { @(Get-Content -LiteralPath $trace.FullName -Tail 400 -ErrorAction SilentlyContinue | Where-Object { $_ -match '(?i)\b(error|fail|denied|refused|proxy|timeout)' } | Select-Object -Last 3 | ForEach-Object { ($_ -replace '\s+', ' ').Trim() }) } else { @() }
+    return "AVISO: sin ID, no conecta con la red de AnyDesk (hora del equipo, red, proxy o antivirus: puertos 80, 443 y 6568)$extra; $net$(if ($trace) { ". Log: $($trace.FullName)" })$(if ($errs) { ". Ultimos errores: $($errs -join ' | ')" })"
 }
 
 function Set-TaskbarLayout {

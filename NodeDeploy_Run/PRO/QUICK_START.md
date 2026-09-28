@@ -36,7 +36,7 @@ Repite la contraseña: ********
 
 Al final, **solo si todas las apps quedan OK**: activa el Administrador local con esa contraseña, saca la cuenta `usuario` (o `user`; da igual mayúsculas) de Administradores y, lo último, une el equipo al dominio. Si algo falla, el cierre se pospone: arréglalo y relanza el script (salta lo ya instalado).
 
-Mientras tanto, en segundo plano: controladores, firmware y BIOS de Lenovo (**deja el cargador conectado**: sin él no se instala el firmware/BIOS) y la limpieza de Windows. Al final: arranque, barra de tareas (Outlook y Teams, sin Store) y PDF24 solo en local.
+Nada más arrancar pone la hora bien (zona de España y reloj en hora; con la hora mal fallan descargas, AnyDesk y el dominio). Mientras tanto, en segundo plano: controladores, firmware y BIOS de Lenovo (**deja el cargador conectado**: sin él no se instala el firmware/BIOS) y la limpieza de Windows. Al final: arranque, barra de tareas (Outlook y Teams, sin Store) y PDF24 solo en local.
 
 ## 3) Esperar
 

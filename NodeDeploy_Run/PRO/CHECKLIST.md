@@ -92,6 +92,8 @@ Mira la sección **Optimizacion de Windows** de `POSTVALIDATE_REPORT.md`, o a ma
 - Deshabilitados: Bit4id Notifications (b4notify), Everything, PDF24, Wondershare PEScreenshot / PEToolbox.
 - Habilitado: AnyDesk (y su servicio en Automático / En ejecución).
 
+- AnyDesk con **ID** (sección "Configuracion de apps" del informe o `Validate_Report.md`). Sin ID: el informe dice si llega a `boot.net.anydesk.com:443` y los últimos errores de `C:\ProgramData\AnyDesk*\ad_svc.trace`.
+- Hora: línea **Hora:** en la cabecera del informe (zona y reloj). En el reloj de Windows, fecha/hora y zona correctas.
 - Barra de tareas (tras iniciar sesión): Explorador, Edge, Outlook clásico y Teams; sin Microsoft Store.
 - Escritorio: de PDF24 solo **PDF24 Toolbox** (sin PDF24 Launcher).
 

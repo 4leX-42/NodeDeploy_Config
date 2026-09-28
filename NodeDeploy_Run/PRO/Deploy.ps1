@@ -64,6 +64,8 @@
     queda verificado: apps, Administrador local, cuenta estandar fuera de Administradores y dominio unido.
     PDF24 solo en local (Policy del catalogo) y en el escritorio solo PDF24 Toolbox. Barra de tareas: Outlook y
     Teams anclados, sin Microsoft Store. Ya no se lanza la busqueda de Windows Update (el portatil la hace al iniciar).
+    v5.5.1: AnyDesk entero y con ID (repara una instalacion a medias; el ID sale en el informe). Hora del equipo al
+    arrancar: zona de Espana y reloj en hora con la cabecera Date de un servidor web (-TimeZone <id|no>).
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -100,7 +102,8 @@ param(
     [switch]$NoFinalize,                 # sin preguntas ni cierre (laboratorio / reintentos)
     [switch]$NoOptimize,                 # sin optimizacion de Windows (Optimize.ps1)
     [switch]$NoLenovoUpdates,            # sin actualizaciones de Lenovo (Lenovo.ps1)
-    [switch]$NoBIOS                      # actualizaciones de Lenovo sin firmware/BIOS
+    [switch]$NoBIOS,                     # actualizaciones de Lenovo sin firmware/BIOS
+    [string]$TimeZone = 'Romance Standard Time'   # zona horaria si la del equipo no es de Espana; 'no' = no tocar la hora
 )
 
 # ============================================================
@@ -113,7 +116,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.5.0'
+$Script:Version       = '5.5.1'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -212,6 +215,49 @@ function Format-Clock {
     # 125 -> "02:05"
     param([int]$Seconds)
     return ('{0:D2}:{1:D2}' -f [int][math]::Floor($Seconds / 60), [int]($Seconds % 60))
+}
+
+function Set-ClockAndTimeZone {
+    # Zona horaria de Espana y reloj en hora antes de descargar nada: con la hora mal fallan las conexiones seguras
+    # (descargas, AnyDesk sin ID) y la union al dominio (Kerberos). Windows no corrige solo un desfase grande
+    # (MaxPhaseCorrection) y muchas redes cortan NTP: la hora buena sale de la cabecera Date de un servidor web por
+    # HTTP (no depende del reloj). Zona: si no es de Espana (Madrid o Canarias) se pone -TimeZone; con -Force, siempre.
+    param([string]$TimeZone = 'Romance Standard Time', [switch]$Force)
+    $out = @()
+    try {
+        $tz = Get-TimeZone
+        if (($Force -or $tz.Id -notin 'Romance Standard Time', 'GMT Standard Time') -and $tz.Id -ne $TimeZone) {
+            Set-TimeZone -Id $TimeZone -ErrorAction Stop
+            [TimeZoneInfo]::ClearCachedData()
+            $out += "zona $TimeZone (antes $($tz.Id))"
+        } else { $out += "zona $($tz.Id)" }
+    } catch { $out += "zona: ERROR $($_.Exception.Message)" }
+    $web = $null; $src = $null
+    foreach ($u in 'http://www.msftconnecttest.com/connecttest.txt', 'http://www.google.com/generate_204') {
+        try {
+            $r = Invoke-WebRequest -Uri $u -Method Head -UseBasicParsing -TimeoutSec 8 -ErrorAction Stop
+            $d = "$($r.Headers['Date'])"
+            if ($d) { $web = [DateTimeOffset]::Parse($d, [Globalization.CultureInfo]::InvariantCulture).UtcDateTime; $src = ([uri]$u).Host; break }
+        } catch {}
+    }
+    if ($web) {
+        $off = [int]($web - [DateTime]::UtcNow).TotalSeconds
+        if ([math]::Abs($off) -gt 120) {
+            $s = [TimeSpan]::FromSeconds([math]::Abs($off))
+            $txt = if ($s.TotalDays -ge 1) { '{0} d {1} h' -f [int][math]::Floor($s.TotalDays), $s.Hours } elseif ($s.TotalHours -ge 1) { '{0} h {1} min' -f [int][math]::Floor($s.TotalHours), $s.Minutes } else { '{0} min' -f [int][math]::Ceiling($s.TotalMinutes) }
+            try {
+                Set-Date -Date ([TimeZoneInfo]::ConvertTimeFromUtc($web, [TimeZoneInfo]::Local)) -ErrorAction Stop | Out-Null
+                $out += "reloj corregido: iba $(if ($off -gt 0) { 'atrasado' } else { 'adelantado' }) $txt (hora de $src)"
+            } catch { $out += "reloj: ERROR $($_.Exception.Message)" }
+        } else { $out += "reloj en hora ($src)" }
+    } else { $out += 'reloj: sin conexion para comprobarlo' }
+    # Sincronizacion automatica de Windows (en el dominio pasa a sincronizar con el controlador)
+    try {
+        Set-Service -Name W32Time -StartupType Automatic -ErrorAction Stop
+        if ((Get-Service -Name W32Time).Status -ne 'Running') { Start-Service -Name W32Time -ErrorAction Stop }
+        & w32tm.exe /resync /nowait 2>&1 | Out-Null
+    } catch { $out += "W32Time: $($_.Exception.Message)" }
+    return ($out -join '; ')
 }
 
 function Disable-ConsoleQuickEdit {
@@ -379,11 +425,12 @@ function Test-InstalledStrict {
     }
     foreach ($svc in @($ServiceNames)) {
         if (-not $svc) { continue }
-        $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
-        if ($s) { $evidence += "service:$svc($($s.Status))" }
+        # Admite comodin (p. ej. AnyDesk*: el servicio del cliente propio se llama AnyDesk-<id>_msi)
+        foreach ($s in @(Get-Service -Name $svc -ErrorAction SilentlyContinue)) { $evidence += "service:$($s.Name)($($s.Status))" }
     }
     foreach ($fp in @($FilePaths)) {
-        if ($fp -and (Test-Path $fp)) { $evidence += "file:$(Split-Path $fp -Leaf)"; break }
+        $f = if ($fp) { Get-Item -Path $fp -ErrorAction SilentlyContinue | Select-Object -First 1 }
+        if ($f) { $evidence += "file:$($f.Name)"; break }
     }
     return @{ Installed = ($evidence.Count -gt 0); Evidence = $evidence; Version = $version }
 }
@@ -572,9 +619,11 @@ $Script:Apps = @(
 
     # ---------- Carril MSI ----------
     [pscustomobject]@{
+        # Cliente propio: un solo ejecutable (AnyDesk-<id>_msi.exe) + servicio AnyDesk-<id>_msi; tarda ~7 s.
+        # Al terminar las apps, Test-AnyDeskHealth comprueba que quede entero y con ID (repara si no).
         Name='AnyDesk'; File='AnyDesk.msi'; Type='msi'; Lane='msi'; Order=10; Timeout=300
-        Detect=@('AnyDesk'); ServiceNames=@('AnyDesk')
-        FilePaths=@("${env:ProgramFiles(x86)}\AnyDesk\AnyDesk.exe","$env:ProgramFiles\AnyDesk\AnyDesk.exe")
+        Detect=@('AnyDesk'); ServiceNames=@('AnyDesk*')
+        FilePaths=@("${env:ProgramFiles(x86)}\AnyDesk*\AnyDesk*.exe","$env:ProgramFiles\AnyDesk*\AnyDesk*.exe")
     },
     [pscustomobject]@{
         Name='AqNet'; File='AqNetInstalacion.msi'; Type='msi'; Lane='msi'; Order=20; Timeout=300
@@ -1562,6 +1611,7 @@ function Write-FinalReport {
     [void]$sb.AppendLine("- **Duracion total:** $(Format-Duration $dur) ($dur s)")
     [void]$sb.AppendLine("- **Modo:** $(if ($Serial) { 'serie' } else { 'carriles MSI + EXE en paralelo, Outlook en background' }) | reintentos max $MaxRetries")
     [void]$sb.AppendLine("- **Reboot requerido:** $($State.reboot_required)")
+    if ($Script:ClockResult) { [void]$sb.AppendLine("- **Hora:** $($Script:ClockResult)") }
     [void]$sb.AppendLine("- **Log:** $($Script:LogFile)")
     [void]$sb.AppendLine('')
     [void]$sb.AppendLine('## Resumen')
@@ -1666,8 +1716,18 @@ if ($Phase -in 'full','install','resume' -and -not $DryRun -and -not $NoFinalize
     }
 }
 
+# Hora del equipo antes de descargar nada (zona de Espana + reloj en hora). La duracion se mide con el reloj: se
+# recoloca el inicio para que el cambio de hora no la falsee.
+$Script:ClockResult = $null
+if ($Phase -in 'full','install','resume' -and -not $DryRun -and $TimeZone -ne 'no') {
+    $pre = Get-Elapsed; $swClock = [Diagnostics.Stopwatch]::StartNew()
+    $Script:ClockResult = Set-ClockAndTimeZone -TimeZone $TimeZone -Force:($PSBoundParameters.ContainsKey('TimeZone'))
+    $Script:StartTime = (Get-Date).AddSeconds(-($pre + $swClock.Elapsed.TotalSeconds))
+    Write-Log "Hora: $($Script:ClockResult)" 'INFO'
+}
+
 # Limpieza de Windows en segundo plano desde t=0 (no alarga el despliegue); el arranque se ajusta al final.
-$Script:DoOptimize = ($Phase -in 'full','install','resume') -and -not $DryRun -and -not $NoOptimize -and (Test-Path $Script:OptimizePs1)
+$Script:DoOptimize =($Phase -in 'full','install','resume') -and -not $DryRun -and -not $NoOptimize -and (Test-Path $Script:OptimizePs1)
 $Script:DebloatProc = $null; $Script:OptimizeResult = $null
 $Script:DebloatJson = Join-Path $Script:LogDir 'optimize_debloat.json'
 if ($Script:DoOptimize) {
@@ -1848,6 +1908,16 @@ try {
 
 # Configuracion de apps del catalogo (p. ej. PDF24 solo en local), tambien si ya estaban instaladas.
 $Script:PolicyResult = if ($DryRun) { $null } else { Set-AppPolicies $State }
+
+# AnyDesk obligatorio: entero, en marcha y con ID (antes de que Lenovo toque la red). Repara una instalacion a medias.
+$adApp = $Script:Apps | Where-Object { $_.Name -eq 'AnyDesk' } | Select-Object -First 1
+$adRec = Get-AppRecord $State 'AnyDesk'
+if (-not $DryRun -and $adRec -and $adRec.status -in $Script:OkStatus -and (Get-Command Test-AnyDeskHealth -ErrorAction SilentlyContinue)) {
+    $adTxt = try { Test-AnyDeskHealth -Msi (Resolve-AppPath $adApp) } catch { "ERROR: $($_.Exception.Message)" }
+    if (-not $Script:PolicyResult) { $Script:PolicyResult = [ordered]@{} }
+    $Script:PolicyResult['AnyDesk'] = $adTxt
+    Write-Log "AnyDesk: $adTxt" $(if ($adTxt -like 'ID *') { 'OK' } else { 'WARN' })
+}
 
 # Lenovo: con las apps ya instaladas, via libre para red, firmware y BIOS; se espera a que termine.
 if ($Script:LenovoProc) {

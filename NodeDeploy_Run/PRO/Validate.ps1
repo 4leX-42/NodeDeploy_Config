@@ -39,7 +39,7 @@ if (Test-Path $stateFile) {
 
 $pf = $env:ProgramFiles; $pf86 = ${env:ProgramFiles(x86)}
 $Script:Checks = @(
-    [pscustomobject]@{ App='AnyDesk';               RegKw='AnyDesk';               Svc='AnyDesk';         File=@("$pf86\AnyDesk\AnyDesk.exe","$pf\AnyDesk\AnyDesk.exe") },
+    [pscustomobject]@{ App='AnyDesk';               RegKw='AnyDesk';               Svc='AnyDesk*';        File=@("$pf86\AnyDesk*\AnyDesk*.exe","$pf\AnyDesk*\AnyDesk*.exe"); AnyDeskId=$true },
     [pscustomobject]@{ App='AqNet';                 RegKw='AqNet';                 Svc=$null;             File=@() },
     [pscustomobject]@{ App='Nebula CertAgent';      RegKw='nebulaCERTagent';       Svc='nebulaCERTagent'; File=@("$pf\Vintegris\nebulaCERTagent\nebulaCERTagent.exe") },
     [pscustomobject]@{ App='ESET Management Agent'; RegKw='ESET Management Agent'; Svc='EraAgentSvc';     File=@("$pf\ESET\RemoteAdministrator\Agent\ERAAgent.exe") },
@@ -85,10 +85,19 @@ foreach ($c in $Script:Checks) {
         elseif (Get-AppxPackage -AllUsers -Name $c.Appx -ErrorAction SilentlyContinue) { $status = 'PARTIAL'; $detail = 'instalado en algun perfil, no aprovisionado' }
     } else {
         $reg = $installed | Where-Object { $_.DisplayName -like "*$($c.RegKw)*" -and (-not $c.Exclude -or $_.DisplayName -notlike "*$($c.Exclude)*") } | Select-Object -First 1
-        $svc = if ($c.Svc) { Get-Service -Name $c.Svc -ErrorAction SilentlyContinue } else { $null }
+        $svc = if ($c.Svc) { Get-Service -Name $c.Svc -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
         foreach ($f in $c.File) { if (Test-Path $f) { $file = $f; break } }
         if ($reg) { $status = 'OK'; $version = $reg.DisplayVersion; $detail = "v$version" }
         elseif ($svc -or $file) { $status = 'PARTIAL'; $detail = if ($svc) { "svc=$($svc.Status)" } else { 'file_only' } }
+        # AnyDesk: ademas del registro, servicio en marcha, ejecutable y conectado a su red (con ID)
+        if ($c.AnyDeskId -and $status -eq 'OK') {
+            $exe = Get-Item -Path $c.File -ErrorAction SilentlyContinue | Select-Object -First 1
+            $id  = if ($exe) { "$(& $exe.FullName --get-id 2>$null | Out-String)".Trim() } else { '' }
+            if (-not $exe) { $status = 'PARTIAL'; $detail += ' falta el ejecutable' }
+            elseif (-not $svc -or $svc.Status -ne 'Running') { $status = 'PARTIAL'; $detail += ' servicio parado' }
+            elseif ($id -match '^\d{9,10}$') { $detail += " ID $id" }
+            else { $status = 'PARTIAL'; $detail += ' sin ID (no conecta con la red de AnyDesk)' }
+        }
     }
     if ($status -ne 'OK' -and $skipped -contains $c.App) { $status = 'SKIPPED'; $detail = 'saltada en el despliegue (-SkipApps/-SkipAV)' }
 

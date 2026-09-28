@@ -33,6 +33,7 @@ Al terminar (full / install / resume / validate) se abren `lusrmgr.msc` y `sysdm
 | Sin preguntas ni cierre (Administrador / usuario / dominio) | `Deploy.bat full -NoFinalize` |
 | Sin optimización de Windows | `Deploy.bat full -NoOptimize` |
 | Sin actualizaciones de Lenovo / solo sin BIOS ni firmware | `Deploy.bat full -NoLenovoUpdates` / `-NoBIOS` |
+| Portátil de Canarias / no tocar la hora | `Deploy.bat full -TimeZone "GMT Standard Time"` / `-TimeZone no` |
 | Repetir apps que fallaron | desinstalarlas y relanzar: el script salta lo ya instalado |
 | Sin paralelismo (diagnóstico) | `Deploy.bat full -Serial` |
 | Sin exclusiones temporales de Defender | `Deploy.bat full -NoDefenderBoost` |
@@ -93,7 +94,9 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
 | Apps de Store que sobran (Xbox, Solitario, Noticias, Tiempo, Clipchamp, TikTok, Disney+, Candy Crush…) | se quitan del usuario actual y de los futuros. **Nunca** Store, Calculadora, Fotos, Terminal, códecs, winget, apps de Lenovo (Vantage), NanaZip, ni Spotify / Outlook nuevo / Teams personal (se quedan) | segundo plano desde t=0 |
 | Publicidad, apps que se instalan solas, sugerencias de Bing, widgets, chat | directivas del equipo + perfil del usuario actual + perfil por defecto (usuarios nuevos del dominio) | segundo plano desde t=0 |
 | Arranque | **deshabilitados** en "Aplicaciones de arranque": PDFelement (Wondershare), PDF24, Everything, b4notify; Edge sin arranque ni segundo plano (directiva). Los servicios de PDF24 (impresora) y Everything (índice) siguen | al final |
+| Hora del equipo | zona horaria de España (Madrid; Canarias se respeta; `-TimeZone` para otra) y reloj en hora con la hora de un servidor web (Windows no corrige solo desfases grandes y muchas redes cortan NTP). Con la hora mal fallan las descargas seguras, AnyDesk no recibe ID y la unión al dominio falla | al arrancar |
 | AnyDesk | servicio automático y en marcha, reinicio si se cae, entrada de inicio habilitada y **sin botón Desinstalar** (un usuario sin admin no puede quitarlo ni desactivarlo) | al final |
+| AnyDesk entero y con ID | comprueba servicio, ejecutable y conexión a la red de AnyDesk (`--get-id`); si quedó a medias repara el MSI, si no hay ID reinicia el servicio, y reabre la ventana que abrió el instalador. **El ID sale en el informe** | al terminar las apps (también con `-NoOptimize`) |
 | Barra de tareas | Explorador, Edge, **Outlook clásico y Teams**; **sin Microsoft Store**. XML + directiva "Diseño de inicio" (método de Microsoft): todos los usuarios, también los del dominio, al iniciar sesión | al final |
 | Comprobaciones | TRIM del SSD (se activa si estuviera apagado), software del fabricante a revisar (antivirus de prueba = choca con ESET/Cortex), lo que sigue arrancando con Windows | al final, en el informe |
 
@@ -149,4 +152,4 @@ nodedeploy\
 
 ---
 
-_Última actualización: 2026-09-28 — NodeDeploy PRO v5.5.0_
+_Última actualización: 2026-09-28 — NodeDeploy PRO v5.5.1_
