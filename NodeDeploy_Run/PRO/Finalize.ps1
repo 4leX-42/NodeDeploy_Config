@@ -86,7 +86,8 @@ function Read-FinalizeAnswers {
 function Invoke-Finalize {
     param($Answers, $State, [string[]]$StandardUser = @('usuario', 'user'))
     # Resultado verificable de cada paso (lo usa Deploy.ps1 para decidir el reinicio automatico)
-    $Script:FinalizeStatus = @{ AdminOk = $false; UserOk = $false; DomainJoined = $false }
+    # DomainJoined = unido en esta pasada (pide reinicio); DomainDone = paso del dominio hecho (unido, ya estaba o "no").
+    $Script:FinalizeStatus = @{ AdminOk = $false; UserOk = $false; DomainJoined = $false; DomainDone = $false }
     $res = [ordered]@{ 'Administrador local' = 'omitido (sin contraseña)'; 'Usuario estandar' = 'omitido'; 'Dominio' = 'no solicitado' }
 
     # 1) Administrador integrado activado con contraseña (si ya lo estaba de una pasada anterior, no se toca)
@@ -157,6 +158,7 @@ function Invoke-Finalize {
     if ($Answers.Domain) {
         $cs = Get-CimInstance Win32_ComputerSystem
         if ($cs.PartOfDomain -and $cs.Domain -ieq $Answers.Domain) {
+            $Script:FinalizeStatus.DomainDone = $true
             $res['Dominio'] = "ya estaba en $($cs.Domain)"
             Write-Log "[CIERRE] El equipo ya pertenece a $($cs.Domain)" 'OK'
         } else {
@@ -166,6 +168,7 @@ function Invoke-Finalize {
                 Add-Computer -DomainName $Answers.Domain -Credential $Answers.DomainCredential -Force -ErrorAction Stop -WarningAction SilentlyContinue
                 $State.reboot_required = $true
                 $Script:FinalizeStatus.DomainJoined = $true
+                $Script:FinalizeStatus.DomainDone = $true
                 $res['Dominio'] = "unido a $($Answers.Domain) (reinicia para completar)"
                 Write-Log "[CIERRE] Equipo unido al dominio $($Answers.Domain). Reinicia para completar." 'OK'
             } catch {
@@ -174,7 +177,10 @@ function Invoke-Finalize {
             }
         }
     } elseif ($Answers.InDomain) {
+        $Script:FinalizeStatus.DomainDone = $true
         $res['Dominio'] = "ya estaba en $($Answers.InDomain)"
+    } else {
+        $Script:FinalizeStatus.DomainDone = $true   # se contesto "no": sin dominio
     }
     return $res
 }

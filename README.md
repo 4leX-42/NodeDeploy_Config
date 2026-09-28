@@ -9,7 +9,7 @@
    - **contraseña del Administrador local** (dos veces).
    
    Si relanzas el script en un equipo ya terminado, no vuelve a preguntar lo ya hecho (Administrador activado, equipo en dominio).
-4. Espera (~7 min, más las actualizaciones de Lenovo si hay muchas). Mientras instala, en segundo plano, **optimiza Windows** (quita apps de Store que sobran, publicidad, Bing, widgets) y **actualiza controladores, firmware y BIOS de Lenovo** (como Commercial Vantage, sin abrirlo). Al final deja sin arrancar con Windows PDFelement, PDF24, Everything, b4notify y Edge (AnyDesk siempre activo), ancla Outlook y Teams a la barra de tareas (sin Microsoft Store) y, si todas las apps quedan OK: Administrador local activado, la cuenta `usuario` (o `user`) fuera de Administradores y, lo último, unión al dominio. Si TODO quedó verificado (apps, validación, Administrador, cuenta estándar y dominio) **reinicia solo a los 15 s** (`shutdown /a` lo cancela); si no, dice por qué en el informe.
+4. Espera (~7 min, más las actualizaciones de Lenovo si hay muchas). Mientras instala, en segundo plano, **optimiza Windows** (quita apps de Store que sobran, publicidad, Bing, widgets) y **actualiza controladores, firmware y BIOS de Lenovo** (como Commercial Vantage, sin abrirlo). Al final deja sin arrancar con Windows PDFelement, PDF24, Everything, b4notify y Edge (AnyDesk siempre activo), ancla Outlook y Teams a la barra de tareas (sin Microsoft Store) y, si todas las apps quedan OK: Administrador local activado, la cuenta `usuario` (o `user`) fuera de Administradores y, lo último, unión al dominio. Si TODO quedó verificado (apps, validación, Administrador, cuenta estándar y paso del dominio: unido o `no`) y algo pide reiniciar (dominio, BIOS/firmware de Lenovo, instaladores), **reinicia solo a los 15 s** (`shutdown /a` lo cancela), siempre después del dominio; si un firmware de Lenovo pide apagar, apaga. Si no, el informe dice por qué.
 
 **Valida con**: `NodeDeploy_Run\POSTVALIDATE_REPORT.md` (estado + cronograma por app, duraciones en min y s) y `Validate_Report.md`.
 
@@ -152,4 +152,4 @@ nodedeploy\
 
 ---
 
-_Última actualización: 2026-09-28 — NodeDeploy PRO v5.5.1_
+_Última actualización: 2026-09-28 — NodeDeploy PRO v5.5.2_

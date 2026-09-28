@@ -134,7 +134,7 @@ if "!RC!"=="0" (
     echo   Algunas aplicaciones fallaron. Revisa POSTVALIDATE_REPORT.md
 ) else if "!RC!"=="3" (
     echo   RESULT: REBOOT REQUIRED   Phase=%PHASE%   exit=3
-    echo   Reinicia el equipo para completar ^(instaladores que lo piden y/o union al dominio^).
+    echo   Reinicia el equipo para completar ^(union al dominio, firmware/BIOS de Lenovo y/o instaladores^).
     echo   Si quedo alguna app pendiente, tras reiniciar: Deploy.bat resume
 ) else if "!RC!"=="2" (
     echo   RESULT: CONFIG ERROR   exit=2
@@ -155,14 +155,26 @@ echo   - logs\msi_*.log / is_*.log / burn_*.log / inno_*.log / odt_outlook\
 echo ============================================================
 echo.
 
-REM ---- Reinicio automatico: Deploy.ps1 deja la marca solo si TODO quedo verificado (apps, Administrador,
-REM      cuenta estandar fuera de Administradores y dominio unido) y ademas Validate tiene que salir bien.
-if exist "%STATE_DIR%\reinicio_automatico.flag" if "!VRC!"=="0" (
-    echo [OK] Todo verificado: apps, Administrador local, cuenta estandar y dominio.
-    echo [STEP] Reinicio automatico en 15 s para completar la union al dominio. Para cancelarlo: shutdown /a
-    shutdown /r /t 15 /c "NodeDeploy: todo verificado y equipo unido al dominio. Reinicio en 15 s. Para cancelar: shutdown /a"
-    goto :END
-)
+REM ---- Reinicio / apagado automatico. Deploy.ps1 deja la marca solo si TODO quedo verificado (apps, Administrador,
+REM      cuenta estandar fuera de Administradores y paso del dominio hecho: unido o "no") y algo pide reiniciar
+REM      (union al dominio, firmware/BIOS de Lenovo o instaladores). Ademas Validate tiene que salir bien.
+REM      Linea 1 de la marca: reiniciar / apagar (algun firmware de Lenovo se graba al apagar). Linea 2: el motivo.
+if not exist "%STATE_DIR%\reinicio_automatico.flag" goto :NO_AUTO
+if not "!VRC!"=="0" goto :NO_AUTO
+set "AUTO_ACT="
+set "AUTO_WHY="
+set /p AUTO_ACT=<"%STATE_DIR%\reinicio_automatico.flag"
+for /f "usebackq skip=1 delims=" %%L in ("%STATE_DIR%\reinicio_automatico.flag") do if not defined AUTO_WHY set "AUTO_WHY=%%L"
+echo [OK] Todo verificado: apps, Administrador local, cuenta estandar y dominio.
+if /I "!AUTO_ACT!"=="apagar" goto :AUTO_OFF
+echo [STEP] Reinicio automatico en 15 s: !AUTO_WHY!. Para cancelarlo: shutdown /a
+shutdown /r /t 15 /c "NodeDeploy: todo verificado. Reinicio en 15 s: !AUTO_WHY!. Para cancelar: shutdown /a"
+goto :END
+:AUTO_OFF
+echo [STEP] Apagado automatico en 15 s: !AUTO_WHY!. El firmware de Lenovo se graba al apagar; luego enciende el equipo.
+shutdown /s /t 15 /c "NodeDeploy: todo verificado. Apagado en 15 s para grabar el firmware de Lenovo: !AUTO_WHY!. Enciendelo despues. Para cancelar: shutdown /a"
+goto :END
+:NO_AUTO
 
 if /I "%PHASE%"=="probe" goto :END
 if /I "%PHASE%"=="cleanup" goto :END

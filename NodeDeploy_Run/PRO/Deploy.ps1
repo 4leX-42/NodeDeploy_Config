@@ -66,6 +66,9 @@
     Teams anclados, sin Microsoft Store. Ya no se lanza la busqueda de Windows Update (el portatil la hace al iniciar).
     v5.5.1: AnyDesk entero y con ID (repara una instalacion a medias; el ID sale en el informe). Hora del equipo al
     arrancar: zona de Espana y reloj en hora con la cabecera Date de un servidor web (-TimeZone <id|no>).
+    v5.5.2: reinicio automatico tambien sin dominio: si todo queda verificado y algo pide reiniciar (dominio,
+    firmware/BIOS de Lenovo, instaladores o Windows), siempre despues del paso del dominio (unido o "no").
+    Si Lenovo pide apagar (algun firmware), se apaga.
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -116,7 +119,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.5.1'
+$Script:Version       = '5.5.2'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -802,6 +805,31 @@ function Resolve-AppDefinition {
     $clone | Add-Member -NotePropertyName 'Path' -NotePropertyValue $null -Force
     $clone | Add-Member -NotePropertyName 'UsingFallback' -NotePropertyValue $true -Force
     return $clone
+}
+
+function Get-AutoRebootDecision {
+    # Reinicio / apagado automatico del final (sin efectos: solo decide). Action = reiniciar | apagar | $null.
+    # Why = lo que falta para poder reiniciar solo; Need = lo que pide reiniciar. Solo hay Action si no falta nada
+    # (apps OK, Administrador activo, cuenta estandar fuera de Administradores, paso del dominio hecho: unido, ya
+    # estaba o "no"; Lenovo sin fallos) y algo pide reiniciar. Si Lenovo pide apagar (algun firmware), se apaga.
+    param($Records, [string[]]$MissingApps, $FinalizeStatus, $LenovoResult, [bool]$WindowsPending)
+    $fs = $FinalizeStatus
+    $notOk = @($Records | Where-Object { $_.status -notin 'ok', 'ok_reboot' } | ForEach-Object { "$($_.name)=$($_.status)" })
+    $why = @()
+    if ($notOk)       { $why += "apps no OK: $($notOk -join ', ')" }
+    if (@($MissingApps | Where-Object { $_ }).Count) { $why += "sin resultado: $(@($MissingApps) -join ', ')" }
+    if (-not ($fs -and $fs.AdminOk))    { $why += 'Administrador local sin activar' }
+    if (-not ($fs -and $fs.UserOk))     { $why += 'cuenta estandar sin quitar de Administradores' }
+    if (-not ($fs -and $fs.DomainDone)) { $why += 'falta el paso del dominio (la union no se completo)' }
+    if ($LenovoResult -and @($LenovoResult.failed).Count) { $why += 'actualizaciones de Lenovo con fallos' }
+    $lnPend = @(if ($LenovoResult) { $LenovoResult.pending })
+    $need = @()
+    if ($fs -and $fs.DomainJoined)          { $need += 'union al dominio' }
+    if ($lnPend -match 'REBOOT|SHUTDOWN')   { $need += 'firmware/BIOS de Lenovo' }
+    if (@($Records | Where-Object { $_.status -eq 'ok_reboot' }).Count) { $need += 'instaladores' }
+    if ($WindowsPending)                    { $need += 'Windows lo pide' }
+    $act = if ($why.Count -or -not $need.Count) { $null } elseif ($lnPend -contains 'SHUTDOWN') { 'apagar' } else { 'reiniciar' }
+    return [pscustomobject]@{ Action = $act; Need = $need; Why = $why }
 }
 
 function Set-AppPolicies {
@@ -1985,26 +2013,22 @@ if ($Script:FinalizeAnswers) {
     }
     $Script:FinalizeAnswers = $null   # las contrasenas no se guardan mas alla de este punto
 
-    # Reinicio automatico (lo hace Deploy.bat tras Validate, con 15 s de aviso): solo si TODAS las apps estan
-    # ok, el Administrador quedo activo, la cuenta estandar fuera de Administradores y el equipo unido al dominio.
-    $recs  = @(Get-AllRecords $State)
-    $notOk = @($recs | Where-Object { $_.status -notin 'ok', 'ok_reboot' } | ForEach-Object { "$($_.name)=$($_.status)" })
-    $noRec = @($Script:Apps | Where-Object { -not (Get-AppRecord $State $_.Name) } | ForEach-Object { $_.Name })
-    $fs = $Script:FinalizeStatus
-    $why = @()
-    if ($notOk) { $why += "apps no OK: $($notOk -join ', ')" }
-    if ($noRec) { $why += "sin resultado: $($noRec -join ', ')" }
-    if (-not ($fs -and $fs.AdminOk))      { $why += 'Administrador local sin activar' }
-    if (-not ($fs -and $fs.UserOk))       { $why += 'cuenta estandar sin quitar de Administradores' }
-    if (-not ($fs -and $fs.DomainJoined)) { $why += 'no se ha unido al dominio en esta pasada' }
-    if ($Script:LenovoResult -and @($Script:LenovoResult.failed).Count) { $why += 'actualizaciones de Lenovo con fallos' }
-    if ($why.Count -eq 0) {
-        Set-Content -LiteralPath $Script:AutoRebootFlag -Value (Get-Date -Format 'o') -Encoding ASCII
-        $Script:FinalizeResult['Reinicio automatico'] = 'si: todo verificado; se reinicia tras la validacion (15 s de aviso; shutdown /a para cancelar)'
-        Write-Log '[CIERRE] Todo verificado: reinicio automatico tras la validacion' 'OK'
+    # Reinicio / apagado automatico (lo hace Deploy.bat tras Validate, con 15 s de aviso). Nunca antes del paso del
+    # dominio (Lenovo ya termino antes del cierre): solo si TODO quedo verificado (apps, Administrador activo, cuenta
+    # estandar fuera de Administradores y paso del dominio hecho: unido, ya estaba o "no") y algo pide reiniciar
+    # (union al dominio, firmware/BIOS de Lenovo, instaladores o Windows). Si Lenovo pide apagar, se apaga.
+    $dec = Get-AutoRebootDecision -Records @(Get-AllRecords $State) -MissingApps @($Script:Apps | Where-Object { -not (Get-AppRecord $State $_.Name) } | ForEach-Object { $_.Name }) `
+        -FinalizeStatus $Script:FinalizeStatus -LenovoResult $Script:LenovoResult -WindowsPending ([bool](Test-PendingReboot).HardPending)
+    if ($dec.Action) {
+        Set-Content -LiteralPath $Script:AutoRebootFlag -Value @($dec.Action, ($dec.Need -join ', ')) -Encoding ASCII
+        $Script:FinalizeResult['Reinicio automatico'] = "si: $($dec.Action) en 15 s tras la validacion ($($dec.Need -join ', ')); shutdown /a para cancelar"
+        Write-Log "[CIERRE] Todo verificado: $($dec.Action) automatico tras la validacion ($($dec.Need -join ', '))" 'OK'
+    } elseif (-not $dec.Why) {
+        $Script:FinalizeResult['Reinicio automatico'] = 'no hace falta: todo verificado y nada pide reiniciar'
+        Write-Log '[CIERRE] Todo verificado; nada pide reiniciar' 'OK'
     } else {
-        $Script:FinalizeResult['Reinicio automatico'] = "no: $($why -join '; ')"
-        Write-Log "[CIERRE] Sin reinicio automatico: $($why -join '; ')" 'INFO'
+        $Script:FinalizeResult['Reinicio automatico'] = "no: $($dec.Why -join '; ')"
+        Write-Log "[CIERRE] Sin reinicio automatico: $($dec.Why -join '; ')" 'INFO'
     }
     Save-State $State
 }

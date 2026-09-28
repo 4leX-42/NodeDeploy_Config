@@ -65,7 +65,7 @@ Se abren: `POSTVALIDATE_REPORT.md` (estado + cronograma), **Local Users and Grou
 |---|---|
 | 0 | Todo OK (sin dominio). Reinicio recomendado. |
 | 1 | Algo falló tras 3 intentos (cierre pospuesto). Revisa el reporte; desinstala lo que quede a medias y relanza el script. |
-| 3 | Reinicio requerido (unión al dominio o un instalador lo pide). Si todo quedó verificado y se unió al dominio, **reinicia solo a los 15 s** (`shutdown /a` lo cancela); si no, reinicia tú. |
+| 3 | Reinicio requerido (dominio, BIOS/firmware de Lenovo o un instalador). Si todo quedó verificado (con dominio unido o `no`), **reinicia solo a los 15 s** (`shutdown /a` lo cancela; si el firmware pide apagar, apaga: enciéndelo luego); si no, reinicia tú. |
 
 ## 5) Validar a mano
 

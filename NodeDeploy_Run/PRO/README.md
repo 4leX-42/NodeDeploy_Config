@@ -41,7 +41,7 @@
 | 19 | **v5.5: actualizaciones Lenovo** (`Lenovo.ps1`) | Controladores, firmware y BIOS del catálogo del modelo (como Commercial Vantage, sin abrirlo), en paralelo a las apps. |
 | 20 | **v5.5: Adobe desde su punto de instalación administrativa** | Parche ya aplicado: no descomprime ni parchea al instalar (lab: 86 s frente a 111 s). |
 | 21 | **v5.5: PDF24 solo local** + barra de tareas | Claves del manual oficial (sin conversor online, herramientas web, fax ni correo); en el escritorio solo PDF24 Toolbox. Outlook y Teams anclados, sin Microsoft Store. Evaluación: `docs\PDF24_Evaluacion_Seguridad.txt`. |
-| 22 | **v5.5: reinicio automático** (15 s) | Solo con todo verificado; completa la unión al dominio y graba firmware/BIOS. |
+| 22 | **v5.5: reinicio automático** (15 s) | Solo con todo verificado; completa la unión al dominio y graba firmware/BIOS. Desde v5.5.2 también sin dominio (`no`) si algo pide reiniciar. |
 
 ---
 
@@ -99,7 +99,7 @@ Al final, **solo si ninguna app quedó en fallo** (si no, se pospone y se hace a
 | 1 | Activa el Administrador integrado (SID `-500`, "Administrador") con esa contraseña | |
 | 2 | Saca la cuenta estándar del grupo Administradores (SID `S-1-5-32-544`): `usuario`, `Usuario`, `user` o `User` (todas las que existan) | Solo si el paso 1 fue bien: nunca deja el equipo sin administrador local. |
 | 3 | Une el equipo al dominio | Lo último. Pide reinicio (exit 3). Si ya estaba en ese dominio, no hace nada. |
-| 4 | **Reinicio automático** (15 s de aviso; `shutdown /a` lo cancela) | Solo si en esa pasada quedó TODO verificado: todas las apps `ok`, validación final sin fallos, Administrador activo, cuenta estándar fuera de Administradores y equipo unido al dominio. Si falta algo, no reinicia y el informe dice por qué. |
+| 4 | **Reinicio automático** (15 s de aviso; `shutdown /a` lo cancela) | Lo último, después del paso del dominio. Solo si quedó TODO verificado (todas las apps `ok`, validación final sin fallos, Administrador activo, cuenta estándar fuera de Administradores, paso del dominio hecho: unido, ya estaba o `no`, y Lenovo sin fallos) **y algo pide reiniciar**: unión al dominio, firmware/BIOS de Lenovo, un instalador o Windows. Si un firmware de Lenovo pide apagar, apaga (`shutdown /s`). Si falta algo, no reinicia y el informe dice por qué; si nada lo pide, "no hace falta". |
 
 Las contraseñas solo están en memoria: no van a log, state ni informe. El resultado sale en la sección **Cierre del equipo** del informe. Probado en la VM (`Lab\guest\Test-Finalize.ps1`); nunca en el PC del técnico.
 
@@ -126,7 +126,7 @@ Proceso aparte desde t=0, solo en equipos Lenovo, con el módulo oficial `Lenovo
 | Firmware y BIOS (reinicio tipo 5) | lo último, **solo con cargador**; BitLocker en pausa hasta el reinicio, que es cuando se graban |
 | Reinicio forzado inmediato (tipo 1, p. ej. firmware de docks) o no desatendidas | nunca |
 
-Nunca reinicia por su cuenta: informa de lo pendiente en la sección **Actualizaciones Lenovo** del informe. Deploy.ps1 espera a que acabe (máx. 30 min) antes del cierre del equipo. `-NoLenovoUpdates` lo omite; `-NoBIOS` deja fuera firmware y BIOS.
+No reinicia a mitad: informa de lo pendiente en la sección **Actualizaciones Lenovo** del informe y el reinicio (o apagado, si el firmware lo pide) lo hace el reinicio automático del final, después del dominio. Deploy.ps1 espera a que acabe (máx. 30 min) antes del cierre del equipo. `-NoLenovoUpdates` lo omite; `-NoBIOS` deja fuera firmware y BIOS.
 
 ## Hora del equipo (v5.5.1, al arrancar)
 

@@ -11,7 +11,8 @@
       4) espera a que Deploy.ps1 termine las apps (fichero señal) e instala el resto: controladores de red
          (así no corta descargas en marcha) y firmware/BIOS (tipo 5). Estos, solo con el cargador conectado
          y con BitLocker en pausa hasta el siguiente reinicio, que es cuando se graban.
-    Nunca reinicia el equipo: informa de lo pendiente (REBOOT_MANDATORY / SHUTDOWN). Resultado en JSON.
+    No reinicia a mitad: informa de lo pendiente (REBOOT_MANDATORY / SHUTDOWN) y el reinicio (o apagado) lo hace
+    Deploy.bat al final, después del paso del dominio y solo si todo quedó verificado. Resultado en JSON.
 
     -PlanOnly: solo muestra qué haría (no descarga ni instala). -TestModel: catálogo de otro modelo (laboratorio).
 #>
