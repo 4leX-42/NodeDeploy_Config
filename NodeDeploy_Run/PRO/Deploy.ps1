@@ -40,7 +40,7 @@
       * MitelConnect cierra antes las apps de Office abiertas (con Outlook abierto preguntaba Si/No).
 
     v5.1.0: cierre del equipo (Finalize.ps1). Al arrancar pregunta dominio (o "no"), usuario del
-    dominio y contraseña del Administrador local; al final, solo si todo queda OK: Administrador
+    dominio y contrasena del Administrador local; al final, solo si todo queda OK: Administrador
     activado -> 'usuario' fuera de Administradores -> union al dominio (lo ultimo).
     -Domain <nombre|no> responde la primera pregunta; -NoFinalize omite todo el cierre.
 
@@ -56,6 +56,14 @@
     v5.4.0: Adobe Acrobat Reader (paquete empresarial, sin quitar los PDF a PDFelement). La limpieza
     deja Spotify, el Outlook nuevo y Teams personal.
     v5.4.1: la cuenta estandar que sale de Administradores se busca como usuario / Usuario / user / User.
+
+    v5.5.0: actualizaciones de Lenovo (Lenovo.ps1, modulo oficial Lenovo.Client.Update) en segundo plano
+    desde t=0: controladores mientras se instalan las apps; red y firmware/BIOS al terminar (con cargador
+    y BitLocker en pausa; se graban al reiniciar). -NoLenovoUpdates / -NoBIOS. Adobe Reader desde el punto
+    de instalacion administrativa (AIP, parche ya aplicado). Reinicio automatico en 15 s solo si todo
+    queda verificado: apps, Administrador local, cuenta estandar fuera de Administradores y dominio unido.
+    PDF24 solo en local (Policy del catalogo) y en el escritorio solo PDF24 Toolbox. Barra de tareas: Outlook y
+    Teams anclados, sin Microsoft Store. Ya no se lanza la busqueda de Windows Update (el portatil la hace al iniciar).
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -90,7 +98,9 @@ param(
     [string]$Domain,                     # nombre del dominio o 'no' (si se omite, se pregunta)
     [string[]]$StandardUser = @('usuario', 'user'),   # cuenta(s) que salen de Administradores (da igual mayusculas)
     [switch]$NoFinalize,                 # sin preguntas ni cierre (laboratorio / reintentos)
-    [switch]$NoOptimize                  # sin optimizacion de Windows (Optimize.ps1)
+    [switch]$NoOptimize,                 # sin optimizacion de Windows (Optimize.ps1)
+    [switch]$NoLenovoUpdates,            # sin actualizaciones de Lenovo (Lenovo.ps1)
+    [switch]$NoBIOS                      # actualizaciones de Lenovo sin firmware/BIOS
 )
 
 # ============================================================
@@ -103,7 +113,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.4.1'
+$Script:Version       = '5.5.0'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -138,6 +148,9 @@ $Script:StatePath = (Convert-Path $StatePath)
 $Script:LogDir    = Join-Path $Script:StatePath 'logs'
 $Script:ReportDir = Join-Path $Script:StatePath 'reports'
 $Script:StateFile = Join-Path $Script:StatePath 'nodedeploy_state.json'
+# Marca para Deploy.bat: reiniciar solo si en ESTA pasada quedo todo verificado (se borra al empezar).
+$Script:AutoRebootFlag = Join-Path $Script:StatePath 'reinicio_automatico.flag'
+Remove-Item -LiteralPath $Script:AutoRebootFlag -Force -ErrorAction SilentlyContinue
 $Script:LogFile   = Join-Path $Script:LogDir ('Deploy_{0}.log' -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
 
 if ($PSVersionTable.PSVersion.Major -lt 5) {
@@ -541,6 +554,14 @@ $imDrive  = 'Imanage 3.0\(1)iManage Drive for Windows 10.13.0.416'
 $imWork   = 'Imanage 3.0\(2)iManage Work Desktop for Windows 10.10.2.62 (x64 Office)'
 $imNative = 'Imanage 3.0\(3)iManageDrive Native 10.6.1.15'
 $pdfExe   = 'pdfelement_business-15066_10.1.5.exe'
+# WebView2 del sistema (Evergreen, lo mantiene Microsoft; viene con Windows 11): deteccion documentada por Microsoft.
+$wv2 = (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' -Name pv -ErrorAction SilentlyContinue).pv
+$Script:HasWebView2 = [bool]($wv2 -and $wv2 -ne '0.0.0.0')
+$pdf24Policy = [ordered]@{
+    '!NoOnlineConverter'=1; '!NoOnlinePdfTools'=1; '!NoFax'=1; '!NoPDF24MailInterface'=1; '!NoUpdateCheckBtns'=1
+    '!reader.enableJavaScript'=0; '!launcher.hideElements'='onlinePdfTools,onlineConverter,fax,updateCheck'; 'UpdateMode'=2
+}
+if ($Script:HasWebView2) { $pdf24Policy['!webview2.useEvergreen'] = 1 }
 
 $Script:Apps = @(
     # ---------- Outlook clasico (background desde t=0) ----------
@@ -622,21 +643,31 @@ $Script:Apps = @(
         Detect=@('Everything'); ServiceNames=@('Everything'); FilePaths=@("$env:ProgramFiles\Everything\Everything.exe")
     },
     [pscustomobject]@{
-        # ~500 MB. AUTOUPDATE=No (sin avisos de actualizacion a usuarios sin admin), REGISTERREADER=No (no se
-        # registra como lector PDF: no compite con PDFelement). La impresora de fax ya viene desactivada.
+        # ~500 MB. AUTOUPDATE=No (el MSI deja UpdateMode=2: sin actualizaciones ni avisos a usuarios sin admin; se
+        # actualiza cambiando el MSI), REGISTERREADER=No (no se registra como lector PDF), FAXPRINTER=No.
+        # Policy (manual oficial v11, HKLM\SOFTWARE\PDF24; '!' = el valor del equipo manda sobre el del usuario):
+        # todo en local, sin conversor online, enlaces a las herramientas web, fax ni correo de PDF24; sin JavaScript
+        # en su lector; WebView2 del sistema (lo parchea Microsoft) en vez de la copia fija que trae PDF24.
+        # Escritorio: el MSI pone PDF24 Toolbox y PDF24 Launcher; se quita el Launcher (anuncia redes sociales).
         Name='PDF24 Creator'; File='pdf24-creator-*-x64.msi'; Type='msi'; Lane='msi'; Order=130; Timeout=900
-        MsiExtra='AUTOUPDATE=No REGISTERREADER=No'
+        MsiExtra='AUTOUPDATE=No REGISTERREADER=No FAXPRINTER=No'
         Detect=@('PDF24 Creator','PDF24'); FilePaths=@("$env:ProgramFiles\PDF24\pdf24.exe")
         Boost=@{ Paths=@("$env:ProgramFiles\PDF24") }
+        Policy=[pscustomobject]@{ Key='HKLM:\SOFTWARE\PDF24'; Values=$pdf24Policy
+            RemoveShortcuts=@('PDF24 Launcher.lnk')
+            Text="solo local: sin conversor online, herramientas web, fax ni correo de PDF24; sin JavaScript en su lector; sin actualizaciones ni botones de actualizar; en el escritorio solo PDF24 Toolbox; $(if ($Script:HasWebView2) { 'WebView2 del sistema' } else { 'WebView2 propio (falta el del sistema)' })" }
     },
     [pscustomobject]@{
-        # Paquete empresarial (setup.exe + AcroPro.msi + parche .msp; setup.ini aplica el parche). En Reader aparece
-        # como "Adobe Acrobat (64-bit)". EULA_ACCEPT=YES (sin licencia al abrir), ENABLE_CHROMEEXT=0 (sin extension
-        # de Chrome), LEAVE_PDFOWNERSHIP=YES (no le quita los PDF a PDFelement). El actualizador se mantiene (seguridad).
-        Name='Adobe Acrobat Reader'; File='AdobeReader_x64_*\setup.exe'; Type='exe'; Lane='msi'; Order=140; Timeout=1200
-        Args='/sAll /rs /msi EULA_ACCEPT=YES ENABLE_CHROMEEXT=0 LEAVE_PDFOWNERSHIP=YES'
+        # Imagen administrativa con el parche ya aplicado (carpeta AdobeReader_x64_*_AIP): no descomprime ni parchea
+        # al instalar (lab: 86 s frente a 111 s). Si falta, paquete empresarial (setup.exe = MSI base + parche .msp).
+        # En Reader aparece como "Adobe Acrobat (64-bit)". EULA_ACCEPT=YES (sin licencia al abrir), ENABLE_CHROMEEXT=0
+        # (sin extension de Chrome), LEAVE_PDFOWNERSHIP=YES (no quita los PDF a PDFelement). Actualizador activo (seguridad).
+        Name='Adobe Acrobat Reader'; File='AdobeReader_x64_*_AIP\AcroPro.msi'; Type='msi'; Lane='msi'; Order=140; Timeout=1200
+        MsiExtra='EULA_ACCEPT=YES ENABLE_CHROMEEXT=0 LEAVE_PDFOWNERSHIP=YES'
         Detect=@('Adobe Acrobat'); FilePaths=@("$env:ProgramFiles\Adobe\Acrobat DC\Acrobat\Acrobat.exe")
-        Boost=@{ Paths=@("$env:ProgramFiles\Adobe") }
+        Boost=@{ Paths=@(@("$env:ProgramFiles\Adobe", "${env:ProgramFiles(x86)}\Common Files\Adobe") +
+                         @(Get-ChildItem -Path (Join-Path $Source 'AdobeReader_x64_*_AIP') -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })) }
+        Fallback=[pscustomobject]@{ File='AdobeReader_x64_*\setup.exe'; Type='exe'; Lane='msi'; Args='/sAll /rs /msi EULA_ACCEPT=YES ENABLE_CHROMEEXT=0 LEAVE_PDFOWNERSHIP=YES' }
     },
     [pscustomobject]@{
         # Siempre el ultimo: su monitor de comportamiento bloquea el runtime InstallScript de iManage.
@@ -691,7 +722,7 @@ $Script:DryRunSeconds = @{
 # Cierre del equipo (Administrador local, usuario estandar, dominio)
 $Script:FinalizePs1 = Join-Path $Script:ScriptDir 'Finalize.ps1'
 if (Test-Path $Script:FinalizePs1) { . $Script:FinalizePs1 }
-# Optimizacion de Windows (apps de Store sobrantes, publicidad, arranque, TRIM, Windows Update)
+# Optimizacion de Windows (apps de Store sobrantes, publicidad, arranque, barra de tareas, TRIM)
 $Script:OptimizePs1 = Join-Path $Script:ScriptDir 'Optimize.ps1'
 if (Test-Path $Script:OptimizePs1) { . $Script:OptimizePs1 }
 
@@ -722,6 +753,38 @@ function Resolve-AppDefinition {
     $clone | Add-Member -NotePropertyName 'Path' -NotePropertyValue $null -Force
     $clone | Add-Member -NotePropertyName 'UsingFallback' -NotePropertyValue $true -Force
     return $clone
+}
+
+function Set-AppPolicies {
+    # Ajustes de registro del catalogo (Policy) en las apps que han quedado OK, instaladas ahora o ya presentes.
+    # Idempotente: en cada pasada se vuelven a escribir.
+    param($State)
+    $res = [ordered]@{}
+    foreach ($a in @($Script:Apps | Where-Object { $_.Policy })) {
+        $r = Get-AppRecord $State $a.Name
+        if (-not $r -or $r.status -notin $Script:OkStatus) { continue }
+        try {
+            if (-not (Test-Path $a.Policy.Key)) { New-Item -Path $a.Policy.Key -Force | Out-Null }
+            foreach ($n in $a.Policy.Values.Keys) {
+                $v = $a.Policy.Values[$n]
+                New-ItemProperty -Path $a.Policy.Key -Name $n -Value $v -PropertyType $(if ($v -is [string]) { 'String' } else { 'DWord' }) -Force -ErrorAction Stop | Out-Null
+            }
+            # Accesos directos del escritorio (el comun y el del usuario que ejecuta el script)
+            foreach ($lnk in @($a.Policy.RemoveShortcuts)) {
+                if (-not $lnk) { continue }
+                foreach ($desk in @([Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('Desktop'))) {
+                    $f = Join-Path $desk $lnk
+                    if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force -ErrorAction Stop; Write-Log "Quitado del escritorio: $f" 'INFO' }
+                }
+            }
+            $res[$a.Name] = $a.Policy.Text
+            Write-Log "Configuracion de $($a.Name): $($a.Policy.Text)" 'OK'
+        } catch {
+            $res[$a.Name] = "ERROR: $($_.Exception.Message)"
+            Write-Log "Configuracion de $($a.Name): $($_.Exception.Message)" 'ERROR'
+        }
+    }
+    return $res
 }
 
 function Get-OfficeState {
@@ -1516,6 +1579,24 @@ function Write-FinalReport {
         foreach ($k in $Script:FinalizeResult.Keys) { [void]$sb.AppendLine("- **${k}:** $($Script:FinalizeResult[$k])") }
         [void]$sb.AppendLine('')
     }
+    if ($Script:LenovoResult) {
+        $lr = $Script:LenovoResult
+        [void]$sb.AppendLine('## Actualizaciones Lenovo')
+        [void]$sb.AppendLine('')
+        if ($lr.model) { [void]$sb.AppendLine("- **Equipo:** $($lr.model) | pendientes en el catalogo: $($lr.found) | $($lr.seconds) s") }
+        [void]$sb.AppendLine("- **Instaladas ($(@($lr.installed).Count)):** $(if (@($lr.installed).Count) { @($lr.installed) -join '; ' } else { 'ninguna' })")
+        if (@($lr.failed).Count)  { [void]$sb.AppendLine("- **Con fallo ($(@($lr.failed).Count)):** $(@($lr.failed) -join '; ')") }
+        if (@($lr.skipped).Count) { [void]$sb.AppendLine("- **No instaladas ($(@($lr.skipped).Count)):** $(@($lr.skipped) -join '; ')") }
+        if (@($lr.pending).Count) { [void]$sb.AppendLine("- **Pendiente:** $(@($lr.pending) -join ', ') (el firmware/BIOS se graba al reiniciar)") }
+        if (@($lr.notes).Count)   { [void]$sb.AppendLine("- **Notas:** $(@($lr.notes) -join '; ')") }
+        [void]$sb.AppendLine('')
+    }
+    if ($Script:PolicyResult -and $Script:PolicyResult.Count) {
+        [void]$sb.AppendLine('## Configuracion de apps')
+        [void]$sb.AppendLine('')
+        foreach ($k in $Script:PolicyResult.Keys) { [void]$sb.AppendLine("- **${k}:** $($Script:PolicyResult[$k])") }
+        [void]$sb.AppendLine('')
+    }
     if ($Script:OptimizeResult) {
         [void]$sb.AppendLine('## Optimizacion de Windows')
         [void]$sb.AppendLine('')
@@ -1594,6 +1675,24 @@ if ($Script:DoOptimize) {
     $Script:DebloatProc = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -PassThru `
         -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Script:OptimizePs1)`" -OptimizeMode debloat -OptimizeOutJson `"$($Script:DebloatJson)`""
     Write-Log 'Optimizacion de Windows en segundo plano: apps de Store sobrantes, publicidad, Bing, widgets' 'INFO'
+}
+
+# Actualizaciones de Lenovo en segundo plano (controladores ya; red, firmware y BIOS al terminar las apps).
+$Script:LenovoProc = $null; $Script:LenovoResult = $null
+$Script:LenovoPs1    = Join-Path $Script:ScriptDir 'Lenovo.ps1'
+$Script:LenovoJson   = Join-Path $Script:LogDir 'lenovo_updates.json'
+$Script:LenovoSignal = Join-Path $Script:LogDir 'lenovo_continuar.flag'
+if (($Phase -in 'full','install','resume') -and -not $DryRun -and -not $NoLenovoUpdates -and (Test-Path $Script:LenovoPs1)) {
+    $mfr = (Get-CimInstance Win32_ComputerSystem).Manufacturer
+    if ($mfr -match 'LENOVO') {
+        Remove-Item -LiteralPath $Script:LenovoJson, $Script:LenovoSignal -Force -ErrorAction SilentlyContinue
+        $lnArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$($Script:LenovoPs1)`" -LenovoMode run -OutJson `"$($Script:LenovoJson)`" -SignalFile `"$($Script:LenovoSignal)`" -ModuleSource `"$(Join-Path $Source 'Lenovo')`""
+        if ($NoBIOS) { $lnArgs += ' -NoBIOS' }
+        $Script:LenovoProc = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -PassThru -ArgumentList $lnArgs
+        Write-Log 'Actualizaciones de Lenovo en segundo plano: controladores ya; red, firmware y BIOS al terminar las apps' 'INFO'
+    } else {
+        Write-Log "Sin actualizaciones de Lenovo: el equipo es $mfr" 'INFO'
+    }
 }
 
 $State = Get-State
@@ -1747,6 +1846,31 @@ try {
     Remove-DefenderBoost -State $State
 }
 
+# Configuracion de apps del catalogo (p. ej. PDF24 solo en local), tambien si ya estaban instaladas.
+$Script:PolicyResult = if ($DryRun) { $null } else { Set-AppPolicies $State }
+
+# Lenovo: con las apps ya instaladas, via libre para red, firmware y BIOS; se espera a que termine.
+if ($Script:LenovoProc) {
+    Write-Step 'ACTUALIZACIONES LENOVO'
+    Set-Content -LiteralPath $Script:LenovoSignal -Value (Get-Date -Format 'o') -Encoding ASCII
+    if (-not $Script:LenovoProc.HasExited) {
+        Write-Log 'Esperando a las actualizaciones de Lenovo (red, firmware y BIOS; max. 30 min)...' 'INFO'
+        [void]$Script:LenovoProc.WaitForExit(1800000)
+    }
+    if (-not $Script:LenovoProc.HasExited) {
+        # No se corta: podria estar grabando firmware. Se informa y se sigue.
+        $Script:LenovoResult = [ordered]@{ failed = @('no termino en 30 min: sigue en segundo plano (no apagues el equipo)'); installed = @(); skipped = @(); pending = @(); notes = @() }
+        Write-Log 'Lenovo: no termino en 30 min, sigue en segundo plano' 'WARN'
+    } elseif (Test-Path -LiteralPath $Script:LenovoJson) {
+        $Script:LenovoResult = Get-Content -LiteralPath $Script:LenovoJson -Raw | ConvertFrom-Json
+        $lr = $Script:LenovoResult
+        if (@($lr.pending) -match 'REBOOT|SHUTDOWN') { $State.reboot_required = $true }
+        Write-Log ("Lenovo: {0} instaladas, {1} con fallo, {2} omitidas en {3} s{4}" -f @($lr.installed).Count, @($lr.failed).Count, @($lr.skipped).Count, $lr.seconds, $(if (@($lr.pending).Count) { " | pendiente: $(@($lr.pending) -join ', ')" })) $(if (@($lr.failed).Count) { 'WARN' } else { 'OK' })
+    } else {
+        $Script:LenovoResult = [ordered]@{ failed = @('sin resultado'); installed = @(); skipped = @(); pending = @(); notes = @() }
+    }
+}
+
 # Optimizacion de Windows: resultado de la limpieza + arranque (las entradas ya existen: apps instaladas).
 if ($Script:DoOptimize -and (Get-Command Set-StartupPolicy -ErrorAction SilentlyContinue)) {
     Write-Step 'OPTIMIZACION DE WINDOWS'
@@ -1771,9 +1895,10 @@ if ($Script:DoOptimize -and (Get-Command Set-StartupPolicy -ErrorAction Silently
         $st = Set-StartupPolicy
         foreach ($k in $st.Keys) { $opt["Arranque: $k"] = $st[$k] }
         Write-Log ("Arranque: " + (($st.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')) 'OK'
+        $opt['Barra de tareas'] = Set-TaskbarLayout
+        Write-Log "Barra de tareas: $($opt['Barra de tareas'])" 'OK'
         $chk = Get-OptimizeChecks
         foreach ($k in $chk.Keys) { $opt[$k] = $chk[$k] }
-        $opt['Windows Update'] = Start-WindowsUpdateScan
     } catch { $opt['ERROR'] = $_.Exception.Message; Write-Log "Optimizacion: $($_.Exception.Message)" 'ERROR' }
     $Script:OptimizeResult = $opt
 }
@@ -1788,7 +1913,29 @@ if ($Script:FinalizeAnswers) {
         $Script:FinalizeResult = [ordered]@{ 'Pospuesto' = "hay $($pending.Count) app(s) con fallo; se hara al relanzar el script cuando todas esten OK" }
         Write-Log "[CIERRE] Pospuesto: $($pending.Count) app(s) con fallo. Relanza el script cuando esten OK." 'WARN'
     }
-    $Script:FinalizeAnswers = $null   # las contraseñas no se guardan mas alla de este punto
+    $Script:FinalizeAnswers = $null   # las contrasenas no se guardan mas alla de este punto
+
+    # Reinicio automatico (lo hace Deploy.bat tras Validate, con 15 s de aviso): solo si TODAS las apps estan
+    # ok, el Administrador quedo activo, la cuenta estandar fuera de Administradores y el equipo unido al dominio.
+    $recs  = @(Get-AllRecords $State)
+    $notOk = @($recs | Where-Object { $_.status -notin 'ok', 'ok_reboot' } | ForEach-Object { "$($_.name)=$($_.status)" })
+    $noRec = @($Script:Apps | Where-Object { -not (Get-AppRecord $State $_.Name) } | ForEach-Object { $_.Name })
+    $fs = $Script:FinalizeStatus
+    $why = @()
+    if ($notOk) { $why += "apps no OK: $($notOk -join ', ')" }
+    if ($noRec) { $why += "sin resultado: $($noRec -join ', ')" }
+    if (-not ($fs -and $fs.AdminOk))      { $why += 'Administrador local sin activar' }
+    if (-not ($fs -and $fs.UserOk))       { $why += 'cuenta estandar sin quitar de Administradores' }
+    if (-not ($fs -and $fs.DomainJoined)) { $why += 'no se ha unido al dominio en esta pasada' }
+    if ($Script:LenovoResult -and @($Script:LenovoResult.failed).Count) { $why += 'actualizaciones de Lenovo con fallos' }
+    if ($why.Count -eq 0) {
+        Set-Content -LiteralPath $Script:AutoRebootFlag -Value (Get-Date -Format 'o') -Encoding ASCII
+        $Script:FinalizeResult['Reinicio automatico'] = 'si: todo verificado; se reinicia tras la validacion (15 s de aviso; shutdown /a para cancelar)'
+        Write-Log '[CIERRE] Todo verificado: reinicio automatico tras la validacion' 'OK'
+    } else {
+        $Script:FinalizeResult['Reinicio automatico'] = "no: $($why -join '; ')"
+        Write-Log "[CIERRE] Sin reinicio automatico: $($why -join '; ')" 'INFO'
+    }
     Save-State $State
 }
 

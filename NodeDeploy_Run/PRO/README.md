@@ -38,6 +38,10 @@
 | 16 | **v5.2: PDF24 Creator, Everything, dnGrep** (MSI) y **NanaZip** (MSIX con DISM, para todos los usuarios) | Nuevas apps del catálogo. Los nombres de instalador admiten comodín: para actualizar basta con sustituir el fichero. |
 | 17 | **v5.3: optimización de Windows** (`Optimize.ps1`) | Limpieza de apps y publicidad en segundo plano, arranque (apps deshabilitadas, AnyDesk obligatorio), TRIM, Windows Update. |
 | 18 | **v5.4: Adobe Acrobat Reader** | Paquete empresarial silencioso; no quita los PDF a PDFelement. Spotify, Outlook nuevo y Teams personal se quedan. |
+| 19 | **v5.5: actualizaciones Lenovo** (`Lenovo.ps1`) | Controladores, firmware y BIOS del catálogo del modelo (como Commercial Vantage, sin abrirlo), en paralelo a las apps. |
+| 20 | **v5.5: Adobe desde su punto de instalación administrativa** | Parche ya aplicado: no descomprime ni parchea al instalar (lab: 86 s frente a 111 s). |
+| 21 | **v5.5: PDF24 solo local** + barra de tareas | Claves del manual oficial (sin conversor online, herramientas web, fax ni correo); en el escritorio solo PDF24 Toolbox. Outlook y Teams anclados, sin Microsoft Store. Evaluación: `docs\PDF24_Evaluacion_Seguridad.txt`. |
+| 22 | **v5.5: reinicio automático** (15 s) | Solo con todo verificado; completa la unión al dominio y graba firmware/BIOS. |
 
 ---
 
@@ -95,6 +99,7 @@ Al final, **solo si ninguna app quedó en fallo** (si no, se pospone y se hace a
 | 1 | Activa el Administrador integrado (SID `-500`, "Administrador") con esa contraseña | |
 | 2 | Saca la cuenta estándar del grupo Administradores (SID `S-1-5-32-544`): `usuario`, `Usuario`, `user` o `User` (todas las que existan) | Solo si el paso 1 fue bien: nunca deja el equipo sin administrador local. |
 | 3 | Une el equipo al dominio | Lo último. Pide reinicio (exit 3). Si ya estaba en ese dominio, no hace nada. |
+| 4 | **Reinicio automático** (15 s de aviso; `shutdown /a` lo cancela) | Solo si en esa pasada quedó TODO verificado: todas las apps `ok`, validación final sin fallos, Administrador activo, cuenta estándar fuera de Administradores y equipo unido al dominio. Si falta algo, no reinicia y el informe dice por qué. |
 
 Las contraseñas solo están en memoria: no van a log, state ni informe. El resultado sale en la sección **Cierre del equipo** del informe. Probado en la VM (`Lab\guest\Test-Finalize.ps1`); nunca en el PC del técnico.
 
@@ -104,8 +109,28 @@ Las contraseñas solo están en memoria: no van a log, state ni informe. El resu
 
 - **Segundo plano desde t=0** (no alarga el despliegue): quita las apps de Store que sobran (lista `$Script:DebloatApps` al principio del fichero) para usuarios actuales y futuros, y aplica directivas contra publicidad, apps que se instalan solas, sugerencias de Bing, widgets y chat (equipo + usuario actual + perfil por defecto). Nunca toca Store, Calculadora, Fotos, Terminal, códecs, winget, apps de Lenovo ni NanaZip.
 - **Al final:** "Aplicaciones de arranque" con PDFelement, PDF24, Everything y b4notify **deshabilitados** (mismo sitio que el Administrador de tareas, en HKLM: un usuario sin admin no puede reactivarlos); Edge sin startup boost ni segundo plano (directiva); AnyDesk obligatorio (servicio automático y en marcha, reinicio si se cae, entrada habilitada y sin botón Desinstalar). Los servicios de PDF24 (impresora) y Everything (índice) se mantienen.
-- **Comprobaciones en el informe:** TRIM, software del fabricante a revisar (no se desinstala solo; Lenovo se respeta), lo que sigue arrancando con Windows; se lanza la búsqueda de Windows Update sin esperar.
+- **Comprobaciones en el informe:** TRIM, software del fabricante a revisar (no se desinstala solo; Lenovo se respeta), lo que sigue arrancando con Windows. Windows Update no se toca (desde v5.5): el portátil ya se actualiza solo al iniciar.
+- **Barra de tareas** (al final): Explorador, Edge, Outlook clásico y Teams (el de empresa `MSTeams`; si solo está el personal, ese), **sin Microsoft Store**. XML `C:\ProgramData\NodeDeploy\TaskbarLayout.xml` + directiva "Diseño de inicio" del equipo (`LockedStartLayout` / `StartLayoutFile`, método documentado por Microsoft para Windows 11): vale para todos los usuarios, también los del dominio, al iniciar sesión. El usuario puede anclar o desanclar después.
 - El registro se vuelca a disco nada más aplicar los cambios (un apagado brusco justo después los perdía; visto en el laboratorio).
+
+---
+
+## Actualizaciones Lenovo (v5.5, `Lenovo.ps1`)
+
+Proceso aparte desde t=0, solo en equipos Lenovo, con el módulo oficial `Lenovo.Client.Update` (copia local en `1.Node_Preparation\Lenovo\` o PowerShell Gallery). Mismo catálogo por modelo que Commercial Vantage; solo lo **aplicable, desatendido y crítico/recomendado**:
+
+| Qué | Cuándo |
+|---|---|
+| Controladores y utilidades que solo piden reinicio | mientras se instalan las apps |
+| Controladores de red (LAN / WiFi / WWAN) | al terminar las apps (no cortan descargas en marcha) |
+| Firmware y BIOS (reinicio tipo 5) | lo último, **solo con cargador**; BitLocker en pausa hasta el reinicio, que es cuando se graban |
+| Reinicio forzado inmediato (tipo 1, p. ej. firmware de docks) o no desatendidas | nunca |
+
+Nunca reinicia por su cuenta: informa de lo pendiente en la sección **Actualizaciones Lenovo** del informe. Deploy.ps1 espera a que acabe (máx. 30 min) antes del cierre del equipo. `-NoLenovoUpdates` lo omite; `-NoBIOS` deja fuera firmware y BIOS.
+
+## Configuración de apps (v5.5, campo `Policy` del catálogo)
+
+Tras las instalaciones, en cada pasada (también si la app ya estaba), se escriben los valores de registro del catálogo. Hoy, PDF24 (`HKLM\SOFTWARE\PDF24`, manual oficial v11; `!` = el valor del equipo manda sobre el del usuario): sin conversor online, enlaces a herramientas web, fax ni correo de PDF24; sin JavaScript en su lector; sin actualizaciones ni botones de actualizar; WebView2 del sistema; y en el escritorio solo PDF24 Toolbox. Sale en la sección **Configuracion de apps** del informe y lo comprueba `Validate.ps1`.
 
 ---
 
@@ -137,7 +162,9 @@ Los parámetros extra se pasan tal cual a `Deploy.ps1` (`Deploy.bat full -SkipAV
 | `-Domain nombre` / `-Domain no` | Responde de antemano la pregunta del dominio. |
 | `-StandardUser a,b` | Cuenta(s) que salen de Administradores (default `usuario,user`; da igual mayúsculas: `Usuario`, `User`…). |
 | `-NoFinalize` | Sin preguntas ni cierre del equipo (laboratorio / pruebas). |
-| `-NoOptimize` | Sin optimización de Windows (`Optimize.ps1`: limpieza de apps, publicidad, arranque, TRIM, Windows Update). |
+| `-NoOptimize` | Sin optimización de Windows (`Optimize.ps1`: limpieza de apps, publicidad, arranque, barra de tareas, TRIM). |
+| `-NoLenovoUpdates` | Sin actualizaciones de Lenovo (`Lenovo.ps1`). |
+| `-NoBIOS` | Actualizaciones de Lenovo sin firmware ni BIOS. |
 
 ---
 

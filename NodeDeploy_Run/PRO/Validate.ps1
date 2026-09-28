@@ -111,6 +111,23 @@ foreach ($k in @('HKLM:\SOFTWARE\Microsoft\Office\Outlook\Addins\*',
 if ($found) { foreach ($f in $found) { Out-Line "  Addin: $($f.Key) ($($f.FriendlyName)) LoadBehavior=$($f.LoadBehavior)" 'OK' } }
 else { Out-Line '  Ningun add-in iManage encontrado en Outlook.' 'WARN' }
 
+# Configuracion aplicada por Deploy.ps1 (aviso si falta; no cambia el resultado)
+Out-Line '' 'INFO'
+Out-Line '--- Configuracion ---' 'INFO'
+$cfg = [ordered]@{}
+if (Test-Path "$pf\PDF24\pdf24.exe") {
+    $p24  = Get-ItemProperty 'HKLM:\SOFTWARE\PDF24' -ErrorAction SilentlyContinue
+    $want = [ordered]@{ '!NoOnlineConverter' = 1; '!NoOnlinePdfTools' = 1; '!NoFax' = 1; '!NoPDF24MailInterface' = 1; 'UpdateMode' = 2 }
+    $bad  = @($want.Keys | Where-Object { "$($p24.$_)" -ne "$($want[$_])" })
+    $desk = [Environment]::GetFolderPath('CommonDesktopDirectory')
+    $cfg['PDF24 solo local'] = if ($bad) { "FALTA: $($bad -join ', ')" } else { 'OK' }
+    $cfg['PDF24 escritorio'] = if (Test-Path (Join-Path $desk 'PDF24 Launcher.lnk')) { 'SOBRA: PDF24 Launcher.lnk' }
+                               elseif (Test-Path (Join-Path $desk 'PDF24 Toolbox.lnk')) { 'OK (solo PDF24 Toolbox)' } else { 'AVISO: sin acceso directo de PDF24 Toolbox' }
+}
+$tb = Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer' -ErrorAction SilentlyContinue
+$cfg['Barra de tareas'] = if ($tb.StartLayoutFile -and (Test-Path ([Environment]::ExpandEnvironmentVariables($tb.StartLayoutFile)))) { "OK ($($tb.StartLayoutFile))" } else { 'FALTA la directiva' }
+foreach ($k in $cfg.Keys) { Out-Line ("  {0,-18} {1}" -f $k, $cfg[$k]) $(if ($cfg[$k] -like 'OK*') { 'OK' } else { 'WARN' }) }
+
 $sb = New-Object Text.StringBuilder
 [void]$sb.AppendLine('# Validate Report')
 [void]$sb.AppendLine('')
@@ -125,6 +142,10 @@ foreach ($r in $results) { [void]$sb.AppendLine("| $($r.App) | $($r.Status) | $(
 [void]$sb.AppendLine('')
 if ($found) { foreach ($f in $found) { [void]$sb.AppendLine("- ``$($f.Key)`` $($f.FriendlyName) LoadBehavior=$($f.LoadBehavior)") } }
 else { [void]$sb.AppendLine('- (ninguno)') }
+[void]$sb.AppendLine('')
+[void]$sb.AppendLine('## Configuracion')
+[void]$sb.AppendLine('')
+foreach ($k in $cfg.Keys) { [void]$sb.AppendLine("- **${k}:** $($cfg[$k])") }
 Set-Content -Path $reportFile -Value $sb.ToString() -Encoding UTF8
 
 $missing = @($results | Where-Object Status -eq 'MISSING').Count

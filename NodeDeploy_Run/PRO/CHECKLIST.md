@@ -92,11 +92,20 @@ Mira la sección **Optimizacion de Windows** de `POSTVALIDATE_REPORT.md`, o a ma
 - Deshabilitados: Bit4id Notifications (b4notify), Everything, PDF24, Wondershare PEScreenshot / PEToolbox.
 - Habilitado: AnyDesk (y su servicio en Automático / En ejecución).
 
+- Barra de tareas (tras iniciar sesión): Explorador, Edge, Outlook clásico y Teams; sin Microsoft Store.
+- Escritorio: de PDF24 solo **PDF24 Toolbox** (sin PDF24 Launcher).
+
 ```powershell
 Get-Service 'AnyDesk*' | Format-Table Name,StartType,Status
 Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Edge' | Select-Object StartupBoostEnabled,BackgroundModeEnabled   # 0 / 0
 fsutil behavior query DisableDeleteNotify   # NTFS ... = 0 -> TRIM activo
+Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer' | Select-Object LockedStartLayout,StartLayoutFile  # 1 / ...\TaskbarLayout.xml
+Get-ItemProperty 'HKLM:\SOFTWARE\PDF24' | Select-Object '!NoOnlineConverter','!NoOnlinePdfTools','!NoFax',UpdateMode   # 1 / 1 / 1 / 2
 ```
+
+## Actualizaciones Lenovo
+
+Sección **Actualizaciones Lenovo** de `POSTVALIDATE_REPORT.md`: instaladas, con fallo, no instaladas (con el motivo) y pendiente de reinicio. Si pone "sin cargador", conecta el cargador y relanza `Deploy.bat resume` para el firmware/BIOS. Tras el reinicio, en Commercial Vantage no debería quedar nada crítico pendiente.
 
 ## Reboot recommendation
 

@@ -107,6 +107,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%DEPLOY_PS1%" -Phase %PHASE
 set "RC=!ERRORLEVEL!"
 
 REM Validate tambien con exit 3 (reinicio pendiente por instaladores o por la union al dominio)
+set "VRC="
 set "RUN_VALIDATE=0"
 if "!RC!"=="0" set "RUN_VALIDATE=1"
 if "!RC!"=="3" set "RUN_VALIDATE=1"
@@ -152,6 +153,15 @@ echo   - logs\Deploy_*.log       (log maestro)
 echo   - logs\msi_*.log / is_*.log / burn_*.log / inno_*.log / odt_outlook\
 echo ============================================================
 echo.
+
+REM ---- Reinicio automatico: Deploy.ps1 deja la marca solo si TODO quedo verificado (apps, Administrador,
+REM      cuenta estandar fuera de Administradores y dominio unido) y ademas Validate tiene que salir bien.
+if exist "%STATE_DIR%\reinicio_automatico.flag" if "!VRC!"=="0" (
+    echo [OK] Todo verificado: apps, Administrador local, cuenta estandar y dominio.
+    echo [STEP] Reinicio automatico en 15 s para completar la union al dominio. Para cancelarlo: shutdown /a
+    shutdown /r /t 15 /c "NodeDeploy: todo verificado y equipo unido al dominio. Reinicio en 15 s. Para cancelar: shutdown /a"
+    goto :END
+)
 
 if /I "%PHASE%"=="probe" goto :END
 if /I "%PHASE%"=="cleanup" goto :END

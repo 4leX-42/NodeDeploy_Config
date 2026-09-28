@@ -14,8 +14,10 @@
       - Edge sin arranque en segundo plano (directivas StartupBoostEnabled / BackgroundModeEnabled);
       - AnyDesk obligatorio: servicio automático y arrancado, reinicio si se cae, entrada de inicio habilitada
         y sin botón Desinstalar.
+    Set-TaskbarLayout (al final): barra de tareas de todos los usuarios con Explorador, Edge, Outlook clásico y Teams,
+      sin Microsoft Store (XML + directiva "Diseño de inicio"; se aplica al iniciar sesión).
     Get-OptimizeChecks: TRIM del SSD, software del fabricante que conviene revisar (no se toca Lenovo Vantage)
-    y lo que sigue arrancando con Windows. Start-WindowsUpdateScan: lanza la búsqueda de actualizaciones sin esperar.
+    y lo que sigue arrancando con Windows. Windows Update no se toca: el portátil ya se actualiza al iniciar.
 
     Uso suelto (lo lanza Deploy.ps1): Optimize.ps1 -OptimizeMode debloat -OptimizeOutJson <ruta>
 #>
@@ -166,6 +168,47 @@ function Set-StartupPolicy {
     return $res
 }
 
+function Set-TaskbarLayout {
+    # Barra de tareas de todos los usuarios, tambien los del dominio (metodo de Microsoft para Windows 11: XML +
+    # directiva "Diseño de inicio" del equipo). Replace quita los anclajes de fabrica (Microsoft Store incluida):
+    # quedan Explorador, Edge, Outlook clasico y Teams. Se aplica al iniciar sesion; si una app no esta instalada,
+    # su icono no aparece. El usuario puede desanclar o anclar mas.
+    $teams = if (Get-AppxPackage -AllUsers -Name 'MSTeams' -ErrorAction SilentlyContinue) { 'MSTeams_8wekyb3d8bbwe!MSTeams' }
+             elseif (Get-AppxPackage -AllUsers -Name 'MicrosoftTeams' -ErrorAction SilentlyContinue) { 'MicrosoftTeams_8wekyb3d8bbwe!MicrosoftTeams' }
+             else { 'MSTeams_8wekyb3d8bbwe!MSTeams' }
+    $xml = @"
+<?xml version="1.0" encoding="utf-8"?>
+<LayoutModificationTemplate
+    xmlns="http://schemas.microsoft.com/Start/2014/LayoutModification"
+    xmlns:defaultlayout="http://schemas.microsoft.com/Start/2014/FullDefaultLayout"
+    xmlns:start="http://schemas.microsoft.com/Start/2014/StartLayout"
+    xmlns:taskbar="http://schemas.microsoft.com/Start/2014/TaskbarLayout"
+    Version="1">
+  <CustomTaskbarLayoutCollection PinListPlacement="Replace">
+    <defaultlayout:TaskbarLayout>
+      <taskbar:TaskbarPinList>
+        <taskbar:DesktopApp DesktopApplicationID="Microsoft.Windows.Explorer"/>
+        <taskbar:DesktopApp DesktopApplicationID="MSEdge"/>
+        <taskbar:DesktopApp DesktopApplicationID="Microsoft.Office.OUTLOOK.EXE.15"/>
+        <taskbar:UWA AppUserModelID="$teams"/>
+      </taskbar:TaskbarPinList>
+    </defaultlayout:TaskbarLayout>
+  </CustomTaskbarLayoutCollection>
+</LayoutModificationTemplate>
+"@
+    $dir  = Join-Path $env:ProgramData 'NodeDeploy'
+    $file = Join-Path $dir 'TaskbarLayout.xml'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    # Solo se reescribe si cambia: Windows vuelve a aplicar el diseño cuando el fichero es mas nuevo.
+    $old = if (Test-Path -LiteralPath $file) { Get-Content -LiteralPath $file -Raw } else { '' }
+    if ($old.Trim() -ne $xml.Trim()) { Set-Content -LiteralPath $file -Value $xml -Encoding UTF8 }
+    $k = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer'
+    Set-RegValue $k 'LockedStartLayout' 1
+    Set-RegValue $k 'StartLayoutFile' $file 'ExpandString'
+    Invoke-RegistryFlush
+    return "Explorador, Edge, Outlook clasico y Teams$(if ($teams -like 'MicrosoftTeams*') { ' (personal: no esta el de empresa)' }); sin Microsoft Store. Se aplica al iniciar sesion"
+}
+
 function Get-OptimizeChecks {
     $res = [ordered]@{}
     # TRIM del SSD (0 = activo). Si estuviera desactivado, se activa.
@@ -198,16 +241,6 @@ function Get-OptimizeChecks {
     }
     $res['Sigue arrancando con Windows'] = if ($on) { ($on | Sort-Object -Unique) -join ', ' } else { 'nada' }
     return $res
-}
-
-function Start-WindowsUpdateScan {
-    # Solo lanza la búsqueda (no espera ni reinicia): Windows descarga e instala en su horario.
-    try {
-        $uso = Join-Path $env:SystemRoot 'System32\UsoClient.exe'
-        if (Test-Path $uso) { Start-Process -FilePath $uso -ArgumentList 'StartScan' -WindowStyle Hidden; return 'busqueda lanzada en segundo plano' }
-        (New-Object -ComObject Microsoft.Update.AutoUpdate).DetectNow()
-        return 'busqueda lanzada en segundo plano'
-    } catch { return "no se pudo lanzar: $($_.Exception.Message)" }
 }
 
 # Modo suelto: limpieza en segundo plano lanzada por Deploy.ps1

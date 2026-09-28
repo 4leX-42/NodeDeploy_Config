@@ -14,6 +14,8 @@ nodedeploy\
     ├── Deploy.bat            <- LANZAR AQUÍ
     ├── Deploy.ps1
     ├── Finalize.ps1          <- cierre: Administrador, usuario, dominio
+    ├── Lenovo.ps1            <- controladores, firmware y BIOS de Lenovo
+    ├── Optimize.ps1          <- limpieza, arranque y barra de tareas
     └── Validate.ps1
 ```
 
@@ -33,6 +35,8 @@ Repite la contraseña: ********
 ```
 
 Al final, **solo si todas las apps quedan OK**: activa el Administrador local con esa contraseña, saca la cuenta `usuario` (o `user`; da igual mayúsculas) de Administradores y, lo último, une el equipo al dominio. Si algo falla, el cierre se pospone: arréglalo y relanza el script (salta lo ya instalado).
+
+Mientras tanto, en segundo plano: controladores, firmware y BIOS de Lenovo (**deja el cargador conectado**: sin él no se instala el firmware/BIOS) y la limpieza de Windows. Al final: arranque, barra de tareas (Outlook y Teams, sin Store) y PDF24 solo en local.
 
 ## 3) Esperar
 
@@ -61,7 +65,7 @@ Se abren: `POSTVALIDATE_REPORT.md` (estado + cronograma), **Local Users and Grou
 |---|---|
 | 0 | Todo OK (sin dominio). Reinicio recomendado. |
 | 1 | Algo falló tras 3 intentos (cierre pospuesto). Revisa el reporte; desinstala lo que quede a medias y relanza el script. |
-| 3 | Reinicio requerido (unión al dominio o un instalador lo pide). Reinicia. |
+| 3 | Reinicio requerido (unión al dominio o un instalador lo pide). Si todo quedó verificado y se unió al dominio, **reinicia solo a los 15 s** (`shutdown /a` lo cancela); si no, reinicia tú. |
 
 ## 5) Validar a mano
 

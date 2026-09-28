@@ -11,7 +11,9 @@ $share = '\\vmware-host\Shared Folders\nodedeploy'
 $log   = 'C:\LabRun\sync.log'
 New-Item -ItemType Directory -Force -Path 'C:\LabRun', $Target | Out-Null
 
-$excludeDirs  = @('.git', '.claude', 'Lab', 'docs', 'Office', 'state')
+# Rutas completas: /XD con solo el nombre excluye cualquier carpeta que se llame asi (el punto de instalacion de
+# Adobe tiene ...\Acrobat DC\PDFMaker\Office y sin ella msiexec daba 1603).
+$excludeDirs  = @('.git', '.claude', 'Lab', 'docs', '1.Node_Preparation\Office', 'NodeDeploy_Run\state') | ForEach-Object { Join-Path $share $_ }
 $avFiles      = @('eset_msi.msi', 'MDR_Windows_Andersen_8_2_x64.msi', 'epi_win_live_installer.exe', 'install_config.ini')
 $excludeFiles = $avFiles + @('*.log')
 

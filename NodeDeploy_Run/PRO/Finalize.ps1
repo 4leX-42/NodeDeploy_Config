@@ -85,6 +85,8 @@ function Read-FinalizeAnswers {
 
 function Invoke-Finalize {
     param($Answers, $State, [string[]]$StandardUser = @('usuario', 'user'))
+    # Resultado verificable de cada paso (lo usa Deploy.ps1 para decidir el reinicio automatico)
+    $Script:FinalizeStatus = @{ AdminOk = $false; UserOk = $false; DomainJoined = $false }
     $res = [ordered]@{ 'Administrador local' = 'omitido (sin contraseña)'; 'Usuario estandar' = 'omitido'; 'Dominio' = 'no solicitado' }
 
     # 1) Administrador integrado activado con contraseña (si ya lo estaba de una pasada anterior, no se toca)
@@ -143,10 +145,13 @@ function Invoke-Finalize {
                 }
             }
             $res['Usuario estandar'] = $msgs -join '; '
+            $Script:FinalizeStatus.UserOk = -not ($msgs -match '^ERROR')
         }
     } elseif ($Answers.AdminPassword) {
         $res['Usuario estandar'] = 'omitido: el Administrador no se pudo activar (no se deja el equipo sin administrador local)'
     }
+
+    $Script:FinalizeStatus.AdminOk = [bool]$adminOk
 
     # 3) Dominio: lo ultimo
     if ($Answers.Domain) {
@@ -155,9 +160,12 @@ function Invoke-Finalize {
             $res['Dominio'] = "ya estaba en $($cs.Domain)"
             Write-Log "[CIERRE] El equipo ya pertenece a $($cs.Domain)" 'OK'
         } else {
+            # Si Lenovo acaba de actualizar el controlador de red, la conexion tarda unos segundos en volver.
+            for ($i = 0; $i -lt 18 -and -not (Resolve-DnsName -Name $Answers.Domain -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Seconds 5 }
             try {
                 Add-Computer -DomainName $Answers.Domain -Credential $Answers.DomainCredential -Force -ErrorAction Stop -WarningAction SilentlyContinue
                 $State.reboot_required = $true
+                $Script:FinalizeStatus.DomainJoined = $true
                 $res['Dominio'] = "unido a $($Answers.Domain) (reinicia para completar)"
                 Write-Log "[CIERRE] Equipo unido al dominio $($Answers.Domain). Reinicia para completar." 'OK'
             } catch {

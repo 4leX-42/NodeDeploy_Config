@@ -1,0 +1,160 @@
+﻿EVALUACIÓN DE SEGURIDAD - PDF24 Creator 11.30.1 (instalador MSI x64)
+======================================================================
+Fecha de la evaluación : 28-09-2026
+Preparado por          : IT Andersen España (despliegue de portátiles con NodeDeploy)
+Próxima revisión       : al publicarse PDF24 11.31.0 o, como máximo, el 28-03-2027
+Resultado              : APTO para el despacho con la configuración del apartado 4
+
+
+1. IDENTIFICACIÓN
+-----------------
+Producto        : PDF24 Creator 11.30.1 (publicada el 24-04-2026; es la última versión a fecha de la evaluación)
+Fabricante      : Geek Software GmbH, Berlín (Alemania), registro mercantil HRB 100865. Sujeto al RGPD.
+Licencia        : freeware propietario (código cerrado). Uso comercial permitido y gratuito.
+Uso previsto    : unir, dividir, comprimir, convertir e imprimir a PDF en el propio equipo.
+Fichero         : pdf24-creator-11.30.1-x64.msi
+Tamaño          : 521.281.536 bytes
+SHA-256         : E6CC23B3D7213DC7D74A90E92C1E7EAC06D4FD90EB93F1F154270AA764136F0F
+
+
+2. COMPROBACIONES SOBRE EL MSI (28-09-2026)
+-------------------------------------------
+2.1 Firma digital (Authenticode)  -> VÁLIDA
+    Firmante  : CN=Geek Software GmbH, O=Geek Software GmbH, Berlin, DE (certificado EV, HRB 100865)
+    Emisor    : Sectigo Public Code Signing CA EV R36
+    Huella    : BBD8FE2BE077B9C3DF3EF0728F65FDF580998F55 (válido del 04-02-2026 al 04-02-2029)
+    Sello     : Sectigo Public Time Stamping Signer R36
+    La firma garantiza que el fichero es del fabricante y que no se ha modificado.
+
+2.2 Antivirus  -> SIN AMENAZAS
+    Microsoft Defender, firmas 1.459.440.0 (28-09-2026). Análisis completo del fichero (374 s):
+    "found no threats".
+
+2.3 Contenido del MSI (lectura de sus tablas, sin instalar)
+    - Valores por defecto: AUTOUPDATE=Yes (el programa avisa de las actualizaciones), DESKTOPICONS=Yes
+      (accesos directos de PDF24 Toolbox y PDF24 Launcher), REGISTERREADER=Yes, FAXPRINTER=No.
+      NodeDeploy los cambia (apartado 4).
+    - Configuración del programa en HKLM\SOFTWARE\PDF24. Arranque con Windows en HKLM\...\Run ("PDF24").
+    - Componentes de terceros incluidos, que solo se actualizan con una versión nueva de PDF24:
+        Ghostscript 10.07.0 | OpenJDK 17.0.18 | Microsoft WebView2 146.0.3856.78 (copia fija)
+        Apache PDFBox 3.0.7 | qpdf 12.3.2 | Tesseract OCR 5.5.2
+    - El servicio de PDF24 (pdf24.exe) se ejecuta como Local System, algo normal en una impresora virtual.
+
+2.4 Vulnerabilidades conocidas
+    - CVE-2023-49147 (CVSS 3.1: 7.8 alta). Escalada local a SYSTEM mediante la reparación del MSI.
+      Afectaba a las versiones 11.15.1 y anteriores instaladas con MSI; corregida en la 11.15.2.
+      NO afecta a la 11.30.1.
+    - No se han encontrado otras CVE publicadas que afecten a la 11.30.1 (búsqueda del 28-09-2026).
+
+2.5 Privacidad
+    - PDF24 Creator procesa los ficheros en el propio equipo: con las funciones online desactivadas, el
+      proveedor no recibe documentos del despacho.
+    - Funciones que usan Internet, todas desactivadas por NodeDeploy (apartado 4):
+      conversor online (si falta un conversor local), enlaces a las herramientas web (tools.pdf24.org
+      sube el fichero a servidores de PDF24), fax (servicio online), interfaz de correo de PDF24 y
+      comprobación de actualizaciones. La descarga de idiomas de OCR solo baja ficheros, no sube documentos.
+    - Incidencia corregida: en la 11.30.0, el editor de formularios subía el fichero al servicio online de
+      PDF24 sin necesidad. Está corregido en la 11.30.1 (changelog oficial).
+    - Telemetría: el manual no documenta ninguna. Hay un "InstallationID", generado por el instalador.
+
+
+3. ORIGEN
+---------
+Descargar solo de la web oficial (creator.pdf24.org). Antes de usar un MSI nuevo, comprobar que la firma es
+"Valid" y que el firmante es Geek Software GmbH (apartado 7).
+
+
+4. CONFIGURACIÓN QUE APLICA NODEDEPLOY (NodeDeploy_Run\PRO\Deploy.ps1)
+----------------------------------------------------------------------
+4.1 Instalación
+    msiexec /i pdf24-creator-11.30.1-x64.msi /qn /norestart /l*v <log>
+            AUTOUPDATE=No REGISTERREADER=No FAXPRINTER=No
+    - AUTOUPDATE=No: el MSI pone UpdateMode=2 (sin actualizaciones automáticas ni avisos a usuarios sin
+      permisos de administrador). Las actualizaciones las controla IT (apartado 6).
+    - REGISTERREADER=No: no se registra como lector de PDF.  FAXPRINTER=No: sin impresora de fax.
+    - Escritorio: queda solo el acceso directo de PDF24 Toolbox. Se quita el de PDF24 Launcher, que
+      muestra publicidad para compartir en redes sociales.
+
+4.2 Registro, en HKLM\SOFTWARE\PDF24, según el manual oficial v11
+    El prefijo "!" hace que el valor del equipo prevalezca sobre el del usuario ("the value from HKLM
+    is always taken"), así que el usuario no puede reactivarlo.
+      !NoOnlineConverter     = 1   sin conversor online
+      !NoOnlinePdfTools      = 1   sin enlaces a las herramientas web
+      !NoFax                 = 1   sin fax (servicio online)
+      !NoPDF24MailInterface  = 1   sin interfaz de correo de PDF24
+      !NoUpdateCheckBtns     = 1   sin botones de "buscar actualizaciones"
+      !reader.enableJavaScript = 0 sin JavaScript en el lector de PDF24
+      !launcher.hideElements = onlinePdfTools,onlineConverter,fax,updateCheck
+      !webview2.useEvergreen = 1   usa el WebView2 del sistema, que actualiza Microsoft, y no la copia fija
+                                   (solo si Windows lo tiene; Windows 11 lo incluye)
+      UpdateMode             = 2   actualizaciones desactivadas
+
+4.3 Otros ajustes
+    - PDF24 no arranca con Windows: queda deshabilitado en "Aplicaciones de arranque".
+    - Se aplica en cada ejecución del script, también si PDF24 ya estaba instalado.
+
+4.4 Evidencias
+    - POSTVALIDATE_REPORT.md, sección "Configuracion de apps".
+    - Validate_Report.md, sección "Configuracion": comprueba las claves y que en el escritorio solo
+      esté PDF24 Toolbox.
+
+
+5. RIESGOS RESIDUALES Y TRATAMIENTO
+-----------------------------------
+R1 Código cerrado, sin auditoría pública.
+   ACEPTADO. Mitigado con la firma verificada, el antivirus, la configuración solo local y el antivirus
+   y EDR corporativos (ESET y Cortex XDR) en los equipos.
+R2 Servicio como Local System: mayor impacto si aparece una vulnerabilidad de escalada.
+   MITIGADO manteniendo la versión al día (apartado 6).
+R3 Componentes incluidos (Ghostscript, OpenJDK, WebView2) que solo se actualizan con PDF24, y
+   actualizaciones automáticas desactivadas.
+   MITIGADO con la revisión del changelog y la actualización del MSI por IT; WebView2 pasa al del sistema.
+R4 Proveedor pequeño, sin certificaciones ISO/IEC 27001 ni SOC 2 publicadas (no encontradas).
+   ACEPTADO: software local que no trata datos en el proveedor. Si auditoría la necesita, pedir la
+   declaración al fabricante.
+R5 Un fallo futuro podría enviar datos a Internet, como pasó en la 11.30.0.
+   MITIGADO con las claves del apartado 4.2. Opcional: bloquear tools.pdf24.org y faxout.pdf24.org en
+   el proxy o el firewall.
+R6 Herramientas web de PDF24 (tools.pdf24.org): suben los documentos a servidores de PDF24.
+   No usarlas con documentos del despacho; los enlaces están desactivados en el programa.
+
+
+6. MANTENIMIENTO
+----------------
+- Revisar el changelog (creator.pdf24.org/changelog/) cada trimestre y cuando se publique una versión.
+  La 11.31.0 ya está anunciada con Ghostscript 10.08.0, OpenJDK 17.0.20.1 y WebView2 153: actualizar
+  cuando salga.
+- Para cambiar de versión, sustituir el MSI en 1.Node_Preparation. NodeDeploy usa el nombre
+  pdf24-creator-*-x64.msi, así que no hay que tocar el script.
+- En los equipos ya entregados, instalar el MSI nuevo con los mismos parámetros del apartado 4.1, con
+  la herramienta de gestión que se use.
+- No instalar nunca una versión anterior a la 11.15.2.
+
+
+7. CÓMO REPETIR LAS COMPROBACIONES (PowerShell como administrador)
+------------------------------------------------------------------
+  Get-FileHash .\pdf24-creator-11.30.1-x64.msi -Algorithm SHA256
+  Get-AuthenticodeSignature .\pdf24-creator-11.30.1-x64.msi | Format-List Status, SignerCertificate
+  & "$env:ProgramFiles\Windows Defender\MpCmdRun.exe" -Scan -ScanType 3 -File "<ruta>\pdf24-creator-11.30.1-x64.msi" -DisableRemediation
+  (El SHA-256 también se puede buscar en virustotal.com: la búsqueda por hash no sube el fichero.)
+
+
+8. RELACIÓN CON ISO/IEC 27001:2022 (Anexo A)
+--------------------------------------------
+5.9 Inventario de activos             : software incluido en el inventario de NodeDeploy (20 apps)
+5.19-5.22 Proveedores                 : este documento (identificación, riesgos y seguimiento)
+5.34 Privacidad y datos personales    : proceso en local; funciones online desactivadas
+8.7 Protección contra malware         : firma verificada + análisis antivirus (apartado 2)
+8.8 Vulnerabilidades técnicas         : CVE revisadas; revisión del changelog (apartado 6)
+8.9 Gestión de la configuración       : configuración fija por registro (apartado 4)
+8.19 Instalación de software          : instalación desatendida y controlada por IT (NodeDeploy)
+8.32 Gestión de cambios               : versión nueva = revisión + prueba en laboratorio + este documento
+
+
+9. FUENTES
+----------
+- Manual oficial de PDF24 Creator 11 (instalación y registro): https://creator.pdf24.org/manual/11/
+- Changelog oficial: https://creator.pdf24.org/changelog/
+- SEC Consult SA-20231211-0 (CVE-2023-49147):
+  https://sec-consult.com/vulnerability-lab/advisory/local-privilege-escalation-via-msi-installer-in-pdf24-creator-geek-software-gmbh/
+- INCIBE-CERT CVE-2023-49147: https://www.incibe.es/en/incibe-cert/early-warning/vulnerabilities/cve-2023-49147
