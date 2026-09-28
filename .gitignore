@@ -51,3 +51,6 @@ Lab/results/
 **/ESET_Endpoint/install.ini
 **/8_ESET_Endpoint.cmd
 **/nodedeploy_state.json
+
+# Dominios internos del menu del cierre (repo publico): solo en el M.2 y en el PC
+**/Dominios.txt

@@ -27,12 +27,21 @@ nodedeploy\
 Al arrancar pregunta (luego todo va solo):
 
 ```
-Dominio al que unir el equipo (escribe no para no unirlo): andersen.local
-Usuario de andersen.local con permiso para unir equipos: tecnico
-Contraseña de andersen.local	ecnico: ********
+Dominio al que unir el equipo:
+  1. Sede 1          empresa.local
+  2. Sede 2          sede2.empresa.local
+  ...
+  8. Otro (escribirlo a mano)
+  0. No unir a ningún dominio
+Elige un número: 1
+  -> Sede 1 (empresa.local)
+Usuario de empresa.local con permiso para unir equipos: tecnico
+Contraseña de empresa.local\tecnico: ********
 Contraseña para el Administrador local: ********
 Repite la contraseña: ********
 ```
+
+Las sedes salen de `NodeDeploy_Run\PRO\Dominios.txt` (una por línea: `Sede = dominio`). Ese fichero **no va a GitHub** (el repo es público): está en el M.2 y en el PC; si falta, se escribe el dominio a mano. Plantilla: `Dominios.ejemplo.txt`.
 
 Al final, **solo si todas las apps quedan OK**: activa el Administrador local con esa contraseña, saca la cuenta `usuario` (o `user`; da igual mayúsculas) de Administradores y, lo último, une el equipo al dominio. Si algo falla, el cierre se pospone: arréglalo y relanza el script (salta lo ya instalado).
 

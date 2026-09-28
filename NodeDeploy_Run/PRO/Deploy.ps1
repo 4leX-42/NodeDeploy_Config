@@ -69,6 +69,8 @@
     v5.5.2: reinicio automatico tambien sin dominio: si todo queda verificado y algo pide reiniciar (dominio,
     firmware/BIOS de Lenovo, instaladores o Windows), siempre despues del paso del dominio (unido o "no").
     Si Lenovo pide apagar (algun firmware), se apaga.
+    v5.5.3: dominio con menu numerado (Dominios.txt junto a los scripts, fuera de git): 1..N sedes, N+1 = otro a
+    mano, 0 = sin dominio. -Domain admite el numero de la lista.
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -119,7 +121,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.5.2'
+$Script:Version       = '5.5.3'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath

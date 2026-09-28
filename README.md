@@ -5,7 +5,7 @@
 1. Copia la **carpeta completa `nodedeploy\`** al M.2 (o úsalo directamente desde él).
 2. Conecta el M.2 al portátil Lenovo (Windows 10/11 x64, con su Microsoft 365 de fábrica).
 3. **Doble clic `nodedeploy\Pincha_pa_instalar.bat`** (o `NodeDeploy_Run\PRO\Deploy.bat`). Acepta UAC y responde las preguntas del arranque:
-   - **dominio** al que unir el equipo (o `no`) y, si hay dominio, usuario con permiso para unir equipos + contraseña;
+   - **dominio**: menú numerado con las sedes de `NodeDeploy_Run\PRO\Dominios.txt` (no va a GitHub), `Otro` para escribirlo a mano o `0` = sin dominio; si hay dominio, usuario con permiso para unir equipos + contraseña;
    - **contraseña del Administrador local** (dos veces).
    
    Si relanzas el script en un equipo ya terminado, no vuelve a preguntar lo ya hecho (Administrador activado, equipo en dominio).
@@ -152,4 +152,4 @@ nodedeploy\
 
 ---
 
-_Última actualización: 2026-09-28 — NodeDeploy PRO v5.5.2_
+_Última actualización: 2026-09-28 — NodeDeploy PRO v5.5.3_

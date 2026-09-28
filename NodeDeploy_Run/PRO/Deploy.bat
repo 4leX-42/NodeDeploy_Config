@@ -13,7 +13,7 @@ REM     Deploy.bat full -SkipAV              (sin ESET / Cortex: laboratorio)
 REM     Deploy.bat full -InstallFullOffice   (equipo SIN Office de fabrica)
 REM     Deploy.bat full -Serial              (sin carriles paralelos, diagnostico)
 REM     Deploy.bat full -NoDefenderBoost     (sin exclusiones temporales de Defender)
-REM     Deploy.bat full -Domain no           (responde "no" a la pregunta del dominio)
+REM     Deploy.bat full -Domain no           (responde "no" a la pregunta del dominio; -Domain 3 = sede 3 de Dominios.txt)
 REM     Deploy.bat full -NoFinalize          (sin preguntas ni cierre: Administrador / usuario / dominio)
 REM     Deploy.bat full -TimeZone "GMT Standard Time"   (zona horaria; por defecto Madrid si no es de Espana; no = no tocar)
 REM  Al arrancar pregunta dominio (o "no"), usuario del dominio y contrasena del Administrador local;

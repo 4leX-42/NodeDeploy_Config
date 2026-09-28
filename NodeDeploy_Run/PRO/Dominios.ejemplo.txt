@@ -1,0 +1,6 @@
+# Plantilla de Dominios.txt (el fichero real NO va a git: el repo es publico).
+# Copia este fichero como Dominios.txt en la misma carpeta y pon vuestras sedes.
+# Una sede por linea: Sede = dominio. El orden es el numero del menu; # = comentario.
+# Al arrancar, Deploy.bat muestra: 1..N sedes, N+1 = Otro (escribirlo a mano), 0 = sin dominio.
+Sede 1 = empresa.local
+Sede 2 = sede2.empresa.local

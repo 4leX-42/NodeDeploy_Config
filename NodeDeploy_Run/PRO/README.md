@@ -89,7 +89,7 @@ Diagnóstico adicional: `reg add "HKLM\SOFTWARE\InstallShield\29.0\Professional"
 
 Al arrancar (fases `full` / `install` / `resume`) se pregunta:
 
-1. **Dominio** al que unir el equipo, o `no`. Con dominio: usuario con permiso para unir equipos (si se escribe sin dominio, se usa `DOMINIO\usuario`) y su contraseña.
+1. **Dominio**: menú numerado con las sedes de `Dominios.txt` (junto a los scripts; una por línea `Sede = dominio`; **fuera de git** porque el repo es público; plantilla `Dominios.ejemplo.txt`), `N+1` = otro (escribirlo a mano), `0` = sin dominio. Sin `Dominios.txt`, se escribe a mano. `-Domain` admite el número, el dominio o `no`. Con dominio: usuario con permiso para unir equipos (si se escribe sin dominio, se usa `DOMINIO\usuario`) y su contraseña.
 2. **Contraseña del Administrador local** (dos veces).
 
 Al final, **solo si ninguna app quedó en fallo** (si no, se pospone y se hace al relanzar el script):

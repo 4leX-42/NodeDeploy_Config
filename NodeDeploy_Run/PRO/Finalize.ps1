@@ -26,6 +26,57 @@ function Get-BuiltinAdmin {
     Get-LocalUser -ErrorAction SilentlyContinue | Where-Object { $_.SID.Value -match '^S-1-5-21-.+-500$' } | Select-Object -First 1
 }
 
+function Get-DomainList {
+    # Dominios del menú: Dominios.txt junto a los scripts, una sede por línea ("Madrid = empresa.local"; # = comentario).
+    # No va a git (el repo es público): si no está, el dominio se escribe a mano. Plantilla: Dominios.ejemplo.txt.
+    $dir = if ($PSScriptRoot) { $PSScriptRoot } else { $Script:ScriptDir }
+    $f = Join-Path $dir 'Dominios.txt'
+    if (-not (Test-Path -LiteralPath $f)) { return @() }
+    @(Get-Content -LiteralPath $f -Encoding UTF8 | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -notlike '#*' } | ForEach-Object {
+        if ($_ -match '^(.+?)\s*[=|-]\s*([A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+)$') { [pscustomobject]@{ Name = $matches[1].Trim(); Domain = $matches[2].ToLower() } }
+    })
+}
+
+function Resolve-DomainAnswer {
+    # Respuesta del menú: número de la lista -> ese dominio; 0 / no -> 'no'; número de "Otro" -> '*manual';
+    # un dominio escrito (con punto) -> ese dominio; lo demás -> $null (se vuelve a preguntar).
+    param([string]$Answer, $List)
+    $a = "$Answer".Trim(); $n = @($List).Count
+    if (-not $a) { return $null }
+    if ($a -ieq 'no' -or $a -eq '0') { return 'no' }
+    if ($a -match '^\d+$') {
+        $k = [int]$a
+        if ($k -ge 1 -and $k -le $n) { return @($List)[$k - 1].Domain }
+        if ($k -eq $n + 1) { return '*manual' }
+        return $null
+    }
+    if ($a -match '^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$') { return $a.ToLower() }
+    return $null
+}
+
+function Read-DomainChoice {
+    # Menú numerado: 1..N = dominios de Dominios.txt, N+1 = otro (a mano), 0 = sin dominio. Sin lista, se escribe.
+    param($List)
+    $n = @($List).Count
+    if ($n) {
+        Write-Host 'Dominio al que unir el equipo:' -ForegroundColor Cyan
+        for ($i = 0; $i -lt $n; $i++) { Write-Host ('  {0}. {1,-15} {2}' -f ($i + 1), $List[$i].Name, $List[$i].Domain) }
+        Write-Host ('  {0}. Otro (escribirlo a mano)' -f ($n + 1))
+        Write-Host  '  0. No unir a ningún dominio'
+    }
+    while ($true) {
+        $prompt = if ($n) { 'Elige un número' } else { 'Dominio al que unir el equipo (escribe no para no unirlo)' }
+        $r = Resolve-DomainAnswer -Answer (Read-Host $prompt) -List $List
+        while ($r -eq '*manual') { $r = Resolve-DomainAnswer -Answer (Read-Host 'Escribe el dominio (p. ej. empresa.local; no = sin dominio)') -List @() }
+        if ($r) {
+            $sel = @($List | Where-Object { $_.Domain -eq $r }) | Select-Object -First 1
+            Write-Host ('  -> {0}' -f $(if ($r -eq 'no') { 'sin dominio' } elseif ($sel) { "$($sel.Name) ($r)" } else { $r })) -ForegroundColor Green
+            return $r
+        }
+        Write-Host $(if ($n) { '  No válido: escribe el número de la lista.' } else { '  No válido: escribe el dominio (con punto) o no.' }) -ForegroundColor Yellow
+    }
+}
+
 function Read-FinalizeAnswers {
     param([string]$Domain)
     # Lo ya hecho en una pasada anterior no se vuelve a preguntar.
@@ -50,10 +101,12 @@ function Read-FinalizeAnswers {
     if ($inDomain) { Write-Host "El equipo ya está en el dominio $inDomain`: no se pregunta el dominio." -ForegroundColor DarkGray }
     if ($adminReady) { Write-Host "El Administrador local ya está activado con contraseña: no se vuelve a pedir." -ForegroundColor DarkGray }
 
-    # 1) Dominio (o "no")
+    # 1) Dominio (o "no"): menú numerado con Dominios.txt. -Domain también admite el número de la lista.
+    $list = @(Get-DomainList)
     $Domain = "$Domain".Trim()
     if ($inDomain) { $Domain = 'no' }
-    while (-not $Domain) { $Domain = "$(Read-Host 'Dominio al que unir el equipo (escribe no para no unirlo)')".Trim() }
+    if ($Domain) { $r = Resolve-DomainAnswer -Answer $Domain -List $list; $Domain = if ($r -and $r -ne '*manual') { $r } else { '' } }
+    if (-not $Domain) { $Domain = Read-DomainChoice -List $list }
     $cred = $null
     if ($Domain -ieq 'no') {
         $Domain = $null
