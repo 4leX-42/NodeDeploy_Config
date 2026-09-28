@@ -32,7 +32,7 @@ Contraseña para el Administrador local: ********
 Repite la contraseña: ********
 ```
 
-Al final, **solo si todas las apps quedan OK**: activa el Administrador local con esa contraseña, saca a `usuario` de Administradores y, lo último, une el equipo al dominio. Si algo falla, el cierre se pospone: arréglalo y relanza el script (salta lo ya instalado).
+Al final, **solo si todas las apps quedan OK**: activa el Administrador local con esa contraseña, saca la cuenta `usuario` (o `user`; da igual mayúsculas) de Administradores y, lo último, une el equipo al dominio. Si algo falla, el cierre se pospone: arréglalo y relanza el script (salta lo ya instalado).
 
 ## 3) Esperar
 

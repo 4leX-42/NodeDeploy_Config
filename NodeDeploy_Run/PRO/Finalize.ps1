@@ -9,7 +9,7 @@
       - la contraseña para el Administrador local.
     Al terminar, SOLO si todas las apps han quedado OK, Invoke-Finalize hace en este orden:
       1) activa el Administrador integrado (SID ...-500, "Administrador" en Windows en español) con esa contraseña;
-      2) saca a 'usuario' del grupo Administradores (SID S-1-5-32-544), solo si 1) ha ido bien:
+      2) saca la cuenta estandar (usuario / Usuario / user / User) del grupo Administradores (SID S-1-5-32-544), solo si 1) ha ido bien:
          nunca se deja el equipo sin administrador local;
       3) lo ultimo, une el equipo al dominio (hace falta reiniciar).
     Las contraseñas solo viven en memoria: nunca se escriben en log, state ni informe.
@@ -84,7 +84,7 @@ function Read-FinalizeAnswers {
 }
 
 function Invoke-Finalize {
-    param($Answers, $State, [string]$StandardUser = 'usuario')
+    param($Answers, $State, [string[]]$StandardUser = @('usuario', 'user'))
     $res = [ordered]@{ 'Administrador local' = 'omitido (sin contraseña)'; 'Usuario estandar' = 'omitido'; 'Dominio' = 'no solicitado' }
 
     # 1) Administrador integrado activado con contraseña (si ya lo estaba de una pasada anterior, no se toca)
@@ -112,27 +112,37 @@ function Invoke-Finalize {
         }
     }
 
-    # 2) Usuario estandar fuera de Administradores (solo con el Administrador ya activo)
+    # 2) Cuenta estandar fuera de Administradores (solo con el Administrador ya activo). Segun el portatil se
+    #    llama usuario / Usuario / user / User: se buscan todos los nombres (Windows no distingue mayusculas).
     if ($adminOk) {
-        $u = Get-LocalUser -Name $StandardUser -ErrorAction SilentlyContinue
-        if (-not $u) {
-            $res['Usuario estandar'] = "no existe la cuenta local '$StandardUser'"
-            Write-Log "[CIERRE] No existe la cuenta local '$StandardUser'" 'WARN'
+        $names = @($StandardUser | ForEach-Object { "$_" -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        $seen = @{}
+        $accounts = @(foreach ($n in $names) {
+            $u = Get-LocalUser -Name $n -ErrorAction SilentlyContinue
+            if ($u -and -not $seen.ContainsKey($u.SID.Value)) { $seen[$u.SID.Value] = $true; $u }
+        })
+        if (-not $accounts) {
+            $res['Usuario estandar'] = "no existe ninguna cuenta local ($($names -join ' / '))"
+            Write-Log "[CIERRE] No existe ninguna cuenta local ($($names -join ' / '))" 'WARN'
         } else {
-            try {
-                # -Member espera un LocalPrincipal: se pasa la cuenta (un SecurityIdentifier no se convierte).
-                Remove-LocalGroupMember -SID 'S-1-5-32-544' -Member $u -ErrorAction Stop
-                $res['Usuario estandar'] = "'$($u.Name)' quitado de Administradores"
-                Write-Log "[CIERRE] '$($u.Name)' quitado del grupo Administradores" 'OK'
-            } catch {
-                if ("$($_.FullyQualifiedErrorId)" -like 'MemberNotFound*') {
-                    $res['Usuario estandar'] = "'$($u.Name)' ya no era administrador"
-                    Write-Log "[CIERRE] '$($u.Name)' ya no estaba en Administradores" 'OK'
-                } else {
-                    $res['Usuario estandar'] = "ERROR: $($_.Exception.Message)"
-                    Write-Log "[CIERRE] Quitar '$($u.Name)' de Administradores: $($_.Exception.Message)" 'ERROR'
+            $msgs = @()
+            foreach ($u in $accounts) {
+                try {
+                    # -Member espera un LocalPrincipal: se pasa la cuenta (un SecurityIdentifier no se convierte).
+                    Remove-LocalGroupMember -SID 'S-1-5-32-544' -Member $u -ErrorAction Stop
+                    $msgs += "'$($u.Name)' quitado de Administradores"
+                    Write-Log "[CIERRE] '$($u.Name)' quitado del grupo Administradores" 'OK'
+                } catch {
+                    if ("$($_.FullyQualifiedErrorId)" -like 'MemberNotFound*') {
+                        $msgs += "'$($u.Name)' ya no era administrador"
+                        Write-Log "[CIERRE] '$($u.Name)' ya no estaba en Administradores" 'OK'
+                    } else {
+                        $msgs += "ERROR '$($u.Name)': $($_.Exception.Message)"
+                        Write-Log "[CIERRE] Quitar '$($u.Name)' de Administradores: $($_.Exception.Message)" 'ERROR'
+                    }
                 }
             }
+            $res['Usuario estandar'] = $msgs -join '; '
         }
     } elseif ($Answers.AdminPassword) {
         $res['Usuario estandar'] = 'omitido: el Administrador no se pudo activar (no se deja el equipo sin administrador local)'

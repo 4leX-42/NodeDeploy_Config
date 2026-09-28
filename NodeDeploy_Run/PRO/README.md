@@ -10,7 +10,7 @@
 1. Conecta el M.2 con `nodedeploy\` (la ruta da igual, todo es relativo).
 2. Doble clic sobre `NodeDeploy_Run\PRO\Deploy.bat` y acepta el UAC.
 3. Responde las preguntas del arranque: dominio (o `no`) + usuario del dominio, y contraseña del Administrador local.
-4. Espera: Notepad abre `POSTVALIDATE_REPORT.md` al terminar. Si todo quedó OK, el equipo ya tiene el Administrador local activo, `usuario` sin permisos de administrador y está unido al dominio.
+4. Espera: Notepad abre `POSTVALIDATE_REPORT.md` al terminar. Si todo quedó OK, el equipo ya tiene el Administrador local activo, `usuario` (o `user`) sin permisos de administrador y está unido al dominio.
 5. Si el reporte indica **REBOOT REQUIRED** (siempre tras unir al dominio), reinicia.
 
 ---
@@ -93,7 +93,7 @@ Al final, **solo si ninguna app quedó en fallo** (si no, se pospone y se hace a
 | Orden | Acción | Notas |
 |---|---|---|
 | 1 | Activa el Administrador integrado (SID `-500`, "Administrador") con esa contraseña | |
-| 2 | Saca a `usuario` del grupo Administradores (SID `S-1-5-32-544`) | Solo si el paso 1 fue bien: nunca deja el equipo sin administrador local. |
+| 2 | Saca la cuenta estándar del grupo Administradores (SID `S-1-5-32-544`): `usuario`, `Usuario`, `user` o `User` (todas las que existan) | Solo si el paso 1 fue bien: nunca deja el equipo sin administrador local. |
 | 3 | Une el equipo al dominio | Lo último. Pide reinicio (exit 3). Si ya estaba en ese dominio, no hace nada. |
 
 Las contraseñas solo están en memoria: no van a log, state ni informe. El resultado sale en la sección **Cierre del equipo** del informe. Probado en la VM (`Lab\guest\Test-Finalize.ps1`); nunca en el PC del técnico.
@@ -135,7 +135,7 @@ Los parámetros extra se pasan tal cual a `Deploy.ps1` (`Deploy.bat full -SkipAV
 | `-ForceReinstall` | Ignora la detección de "ya instalado". |
 | `-DryRun` | Simula (no instala nada, no pregunta, no toca cuentas). `NODEDEPLOY_DRYRUN_SCALE`, `NODEDEPLOY_DRYRUN_FAIL="AqNet:1618:2"`. |
 | `-Domain nombre` / `-Domain no` | Responde de antemano la pregunta del dominio. |
-| `-StandardUser nombre` | Cuenta que sale de Administradores (default `usuario`). |
+| `-StandardUser a,b` | Cuenta(s) que salen de Administradores (default `usuario,user`; da igual mayúsculas: `Usuario`, `User`…). |
 | `-NoFinalize` | Sin preguntas ni cierre del equipo (laboratorio / pruebas). |
 | `-NoOptimize` | Sin optimización de Windows (`Optimize.ps1`: limpieza de apps, publicidad, arranque, TRIM, Windows Update). |
 
@@ -189,4 +189,4 @@ state\
 
 ---
 
-_NodeDeploy PRO v5.4.0 · 2026-09-26_
+_NodeDeploy PRO v5.4.1 · 2026-09-28_

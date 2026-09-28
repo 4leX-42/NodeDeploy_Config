@@ -55,6 +55,7 @@
 
     v5.4.0: Adobe Acrobat Reader (paquete empresarial, sin quitar los PDF a PDFelement). La limpieza
     deja Spotify, el Outlook nuevo y Teams personal.
+    v5.4.1: la cuenta estandar que sale de Administradores se busca como usuario / Usuario / user / User.
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -87,7 +88,7 @@ param(
     [string]$OutlookMethod = 'bootstrap',
     # Cierre del equipo (Finalize.ps1): se pregunta al arrancar y se aplica al final si todo queda OK.
     [string]$Domain,                     # nombre del dominio o 'no' (si se omite, se pregunta)
-    [string]$StandardUser = 'usuario',   # cuenta que sale del grupo Administradores
+    [string[]]$StandardUser = @('usuario', 'user'),   # cuenta(s) que salen de Administradores (da igual mayusculas)
     [switch]$NoFinalize,                 # sin preguntas ni cierre (laboratorio / reintentos)
     [switch]$NoOptimize                  # sin optimizacion de Windows (Optimize.ps1)
 )
@@ -102,7 +103,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.4.0'
+$Script:Version       = '5.4.1'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath

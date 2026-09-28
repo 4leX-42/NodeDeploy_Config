@@ -81,7 +81,7 @@ Mira la sección **Cierre del equipo** de `POSTVALIDATE_REPORT.md`, o a mano:
 
 ```powershell
 Get-LocalUser | Where-Object { $_.SID -like '*-500' } | Format-Table Name,Enabled   # Administrador: Enabled=True
-Get-LocalGroupMember -SID S-1-5-32-544 | Format-Table Name,PrincipalSource         # sin 'usuario'
+Get-LocalGroupMember -SID S-1-5-32-544 | Format-Table Name,PrincipalSource         # sin 'usuario' ni 'user'
 (Get-CimInstance Win32_ComputerSystem) | Format-List Domain,PartOfDomain            # dominio tras reiniciar
 ```
 

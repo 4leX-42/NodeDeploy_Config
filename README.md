@@ -9,7 +9,7 @@
    - **contraseña del Administrador local** (dos veces).
    
    Si relanzas el script en un equipo ya terminado, no vuelve a preguntar lo ya hecho (Administrador activado, equipo en dominio).
-4. Espera (~7 min). Mientras instala, en segundo plano, **optimiza Windows** (quita apps de Store que sobran, publicidad, Bing, widgets). Al final deja sin arrancar con Windows PDFelement, PDF24, Everything, b4notify y Edge (AnyDesk siempre activo) y, si todas las apps quedan OK: Administrador local activado, `usuario` fuera de Administradores y, lo último, unión al dominio. Si pide reinicio (exit 3), reinicia.
+4. Espera (~7 min). Mientras instala, en segundo plano, **optimiza Windows** (quita apps de Store que sobran, publicidad, Bing, widgets). Al final deja sin arrancar con Windows PDFelement, PDF24, Everything, b4notify y Edge (AnyDesk siempre activo) y, si todas las apps quedan OK: Administrador local activado, la cuenta `usuario` (o `user`) fuera de Administradores y, lo último, unión al dominio. Si pide reinicio (exit 3), reinicia.
 
 **Valida con**: `NodeDeploy_Run\POSTVALIDATE_REPORT.md` (estado + cronograma por app, duraciones en min y s) y `Validate_Report.md`.
 
@@ -143,4 +143,4 @@ nodedeploy\
 
 ---
 
-_Última actualización: 2026-09-26 — NodeDeploy PRO v5.4.0_
+_Última actualización: 2026-09-28 — NodeDeploy PRO v5.4.1_

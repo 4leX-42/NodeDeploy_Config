@@ -56,6 +56,19 @@ try {
     $r3.GetEnumerator() | ForEach-Object { Add-Content -Path $out -Value "   3) $($_.Key): $($_.Value)" }
     Out-Check 'dominio inexistente -> error controlado' ("$($r3['Dominio'])" -like 'ERROR:*')
     Out-Check 'el equipo sigue fuera de dominio' (-not (Get-CimInstance Win32_ComputerSystem).PartOfDomain)
+
+    # Cuenta estandar con otro nombre o mayusculas: usuario / Usuario / user / User
+    if (-not (Get-LocalUser -Name 'User' -ErrorAction SilentlyContinue)) {
+        New-LocalUser -Name 'User' -Password (ConvertTo-SecureString (New-RandomPassword) -AsPlainText -Force) | Out-Null
+    }
+    foreach ($n in 'User', 'usuario') { try { Add-LocalGroupMember -SID 'S-1-5-32-544' -Member $n -ErrorAction Stop } catch {} }
+    $ansR = @{ Domain = $null; DomainCredential = $null; AdminPassword = $null; AdminReady = $true; InDomain = $null }
+    $r5 = Invoke-Finalize -Answers $ansR -State $state      # nombres por defecto: usuario, user
+    $r5.GetEnumerator() | ForEach-Object { Add-Content -Path $out -Value "   5) $($_.Key): $($_.Value)" }
+    $adminNames = @(Get-LocalGroupMember -SID 'S-1-5-32-544' | ForEach-Object { ($_.Name -split '\\')[-1] })
+    Out-Check 'por defecto quita usuario y User de Administradores' (($adminNames -notcontains 'usuario') -and ($adminNames -notcontains 'User'))
+    $r6 = Invoke-Finalize -Answers $ansR -State $state -StandardUser 'USUARIO'
+    Out-Check 'mayusculas: USUARIO encuentra la cuenta usuario' ("$($r6['Usuario estandar'])" -like '*usuario*')
     exit 0
 } catch {
     Add-Content -Path $out -Value "EXCEPCION: $($_.Exception.Message)"
