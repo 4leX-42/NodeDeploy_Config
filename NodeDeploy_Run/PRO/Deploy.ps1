@@ -83,6 +83,12 @@
     Informe corto (tiempos marcados > 1 min). Logs en zip a la carpeta de red (Ajustes.local.txt; NodeDeploy_Success /
     NodeDeploy_Errors) o al lado de la carpeta. La carpeta pegada en un Escritorio se borra sola si todo quedo listo
     (Cleanup.ps1; -KeepFolder la conserva). Solo se abren lusrmgr / sysdm si hay algo que revisar.
+    v5.7.1: informe: Outlook solo con aviso si pasa de 5 min (la excepcion; las demas, de 1 min); "apps de Store
+    quitadas" cuenta apps, no paquetes (cada una salia dos veces: instalada + aprovisionada).
+    v5.7.2: cortes por app ~2x lo normal en portatiles reales (min. 90 s; Adobe 8 min; Outlook, que tiene que
+    quedar si o si: 15 min ODT / 25 min plan B). Un MSI cortado que deja Windows Installer ocupado: 30 s de
+    gracia y se cortan los msiexec (antes las MSI siguientes esperaban 10 + 5 min cada una). Windows Installer
+    ocupado por otro programa: max. 5 min + 3 min de 1618 por app.
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -136,7 +142,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.7.0'
+$Script:Version       = '5.7.2'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -728,74 +734,74 @@ $Script:Apps = @(
     [pscustomobject]@{
         # Cliente propio: un solo ejecutable (AnyDesk-<id>_msi.exe) + servicio AnyDesk-<id>_msi; tarda ~7 s.
         # Al terminar las apps, Test-AnyDeskHealth comprueba que quede entero y con ID (repara si no).
-        Name='AnyDesk'; File='AnyDesk.msi'; Type='msi'; Lane='msi'; Order=10; Timeout=120
+        Name='AnyDesk'; File='AnyDesk.msi'; Type='msi'; Lane='msi'; Order=10; Timeout=90
         Detect=@('AnyDesk'); ServiceNames=@('AnyDesk*')
         FilePaths=@("${env:ProgramFiles(x86)}\AnyDesk*\AnyDesk*.exe","$env:ProgramFiles\AnyDesk*\AnyDesk*.exe")
     },
     [pscustomobject]@{
-        Name='AqNet'; File='AqNetInstalacion.msi'; Type='msi'; Lane='msi'; Order=20; Timeout=180
+        Name='AqNet'; File='AqNetInstalacion.msi'; Type='msi'; Lane='msi'; Order=20; Timeout=90
         Detect=@('AqNet','Aqnet','Deposito Digital')
     },
     [pscustomobject]@{
-        Name='Nebula CertAgent'; File='nebula-certAgent-winx64-5.0.0.msi'; Type='msi'; Lane='msi'; Order=30; Timeout=180
+        Name='Nebula CertAgent'; File='nebula-certAgent-winx64-5.0.0.msi'; Type='msi'; Lane='msi'; Order=30; Timeout=90
         Detect=@('Nebula','CertAgent','nebulaCERTagent'); ServiceNames=@('nebulaCERTagent','nebulaCERT')
         FilePaths=@("$env:ProgramFiles\Vintegris\nebulaCERTagent\nebulaCERTagent.exe")
     },
     [pscustomobject]@{
-        Name='ESET Management Agent'; File='eset_msi.msi'; Type='msi-eset'; Lane='msi'; Order=40; Timeout=240
+        Name='ESET Management Agent'; File='eset_msi.msi'; Type='msi-eset'; Lane='msi'; Order=40; Timeout=120
         Detect=@('ESET Management Agent','ESET Remote Administrator Agent'); ServiceNames=@('EraAgentSvc')
         FilePaths=@("$env:ProgramFiles\ESET\RemoteAdministrator\Agent\ERAAgent.exe")
     },
     [pscustomobject]@{
         # Enterprise MSI offline (~160 MB): sin descarga en el momento, exit codes MSI fiables.
-        Name='Google Chrome'; File='GoogleChromeStandaloneEnterprise64.msi'; Type='msi'; Lane='msi'; Order=50; Timeout=300
+        Name='Google Chrome'; File='GoogleChromeStandaloneEnterprise64.msi'; Type='msi'; Lane='msi'; Order=50; Timeout=210
         Detect=@('Google Chrome')
         FilePaths=@("$env:ProgramFiles\Google\Chrome\Application\chrome.exe","${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe")
         Fallback=[pscustomobject]@{ File='ChromeSetup.exe'; Type='exe'; Lane='exe'; Args='/silent /install' }
     },
     [pscustomobject]@{
         # CloseOffice: con Outlook abierto el instalador pregunta Si/No (integra complemento de Outlook).
-        Name='MitelConnect'; File='MitelConnect.exe'; Type='installshield'; Lane='msi'; Order=60; Timeout=360
+        Name='MitelConnect'; File='MitelConnect.exe'; Type='installshield'; Lane='msi'; Order=60; Timeout=300
         MsiExtra='REBOOT=ReallySuppress'; CloseOffice=$true
         Detect=@('Mitel Connect','Mitel','MiCollab')
         FilePaths=@("$env:ProgramFiles\Mitel\Connect Client\ConnectAgent.exe","${env:ProgramFiles(x86)}\Mitel\Connect Client\ConnectAgent.exe")
         Boost=@{ Paths=@("${env:ProgramFiles(x86)}\Mitel","$env:ProgramFiles\Mitel") }
     },
     [pscustomobject]@{
-        Name='iManage Agent Services'; Path="$imWork\iManageAgentServices.exe"; Type='installshield'; Lane='msi'; Order=70; Timeout=240
+        Name='iManage Agent Services'; Path="$imWork\iManageAgentServices.exe"; Type='installshield'; Lane='msi'; Order=70; Timeout=90
         MsiExtra='REBOOT=ReallySuppress'
         Detect=@('iManage Agent Services','iManage Agent','iManageAgent')
     },
     [pscustomobject]@{
         # 10.13 ya NO es WiX Burn (10.10 lo era): es InstallShield InstallScript puro y /quiet
         # abria la GUI. Silencioso = "setup.exe /s" + setup.iss (el que trae el paquete, junto al exe).
-        Name='iManage Drive'; Path="$imDrive\iManageDriveSetup.exe"; Type='installshield-imanage'; Lane='msi'; Order=80; Timeout=480
+        Name='iManage Drive'; Path="$imDrive\iManageDriveSetup.exe"; Type='installshield-imanage'; Lane='msi'; Order=80; Timeout=240
         Detect=@('iManage Drive'); ExcludeDetect=@('Native')
         FilePaths=@("$env:ProgramFiles\iManage\iManage Drive\iManageDrive.exe")
         Boost=@{ Processes=@('iManageDriveSetup.exe','ISBEW64.exe'); Paths=@("$env:ProgramFiles\iManage") }
     },
     [pscustomobject]@{
-        Name='iManage Drive Native'; Path="$imNative\iManageDriveNative.exe"; Type='burn'; Lane='msi'; Order=90; Timeout=180
+        Name='iManage Drive Native'; Path="$imNative\iManageDriveNative.exe"; Type='burn'; Lane='msi'; Order=90; Timeout=90
         Requires=@('iManage Drive')
         Detect=@('iManage Drive Native','iManageDriveNative')
     },
     [pscustomobject]@{
         # InstallScript puro. Prerequisitos HARD (log iManage): Agent Services + Office con Word y Outlook.
-        Name='iManage Work Desktop'; Path="$imWork\iManageWorkDesktopforWindowsx64.exe"; Type='installshield-imanage'; Lane='msi'; Order=100; Timeout=480
+        Name='iManage Work Desktop'; Path="$imWork\iManageWorkDesktopforWindowsx64.exe"; Type='installshield-imanage'; Lane='msi'; Order=100; Timeout=120
         Requires=@('iManage Agent Services','@office'); RequiresOffice=$true
         Detect=@('iManage Work Desktop','iManage Work')
         Boost=@{ Processes=@('iManageWorkDesktopforWindowsx64.exe','ISBEW64.exe'); Paths=@("$env:ProgramFiles\iManage","${env:ProgramFiles(x86)}\iManage") }
     },
     [pscustomobject]@{
         # WiX, por equipo. LAUNCHAPPONEXIT=0: que no abra dnGrep al terminar.
-        Name='dnGrep'; File='dnGREP.*.x64.msi'; Type='msi'; Lane='msi'; Order=110; Timeout=240
+        Name='dnGrep'; File='dnGREP.*.x64.msi'; Type='msi'; Lane='msi'; Order=110; Timeout=90
         MsiExtra='LAUNCHAPPONEXIT=0'
         Detect=@('dnGrep'); FilePaths=@("$env:ProgramFiles\dnGREP\dnGREP.exe")
     },
     [pscustomobject]@{
         # Propiedades documentadas por voidtools (EVERYTHING_SERVICE, START_ON_STARTUP, *_SHORTCUT...) valen 1
         # por defecto: servicio + arranque con Windows + accesos directos. 1.4.1.1031+ arranca el servicio en /qn.
-        Name='Everything'; File='Everything-*.x64.msi'; Type='msi'; Lane='msi'; Order=120; Timeout=120
+        Name='Everything'; File='Everything-*.x64.msi'; Type='msi'; Lane='msi'; Order=120; Timeout=90
         Detect=@('Everything'); ServiceNames=@('Everything'); FilePaths=@("$env:ProgramFiles\Everything\Everything.exe")
     },
     [pscustomobject]@{
@@ -805,7 +811,7 @@ $Script:Apps = @(
         # todo en local, sin conversor online, enlaces a las herramientas web, fax ni correo de PDF24; sin JavaScript
         # en su lector; WebView2 del sistema (lo parchea Microsoft) en vez de la copia fija que trae PDF24.
         # Escritorio: el MSI pone PDF24 Toolbox y PDF24 Launcher; se quita el Launcher (anuncia redes sociales).
-        Name='PDF24 Creator'; File='pdf24-creator-*-x64.msi'; Type='msi'; Lane='msi'; Order=130; Timeout=360
+        Name='PDF24 Creator'; File='pdf24-creator-*-x64.msi'; Type='msi'; Lane='msi'; Order=130; Timeout=180
         MsiExtra='AUTOUPDATE=No REGISTERREADER=No FAXPRINTER=No'
         Detect=@('PDF24 Creator','PDF24'); FilePaths=@("$env:ProgramFiles\PDF24\pdf24.exe")
         Boost=@{ Paths=@("$env:ProgramFiles\PDF24") }
@@ -818,7 +824,7 @@ $Script:Apps = @(
         # al instalar (lab: 86 s frente a 111 s). Si falta, paquete empresarial (setup.exe = MSI base + parche .msp).
         # En Reader aparece como "Adobe Acrobat (64-bit)". EULA_ACCEPT=YES (sin licencia al abrir), ENABLE_CHROMEEXT=0
         # (sin extension de Chrome), LEAVE_PDFOWNERSHIP=YES (no quita los PDF a PDFelement). Actualizador activo (seguridad).
-        Name='Adobe Acrobat Reader'; File='AdobeReader_x64_*_AIP\AcroPro.msi'; Type='msi'; Lane='msi'; Order=140; Timeout=600
+        Name='Adobe Acrobat Reader'; File='AdobeReader_x64_*_AIP\AcroPro.msi'; Type='msi'; Lane='msi'; Order=140; Timeout=480
         MsiExtra='EULA_ACCEPT=YES ENABLE_CHROMEEXT=0 LEAVE_PDFOWNERSHIP=YES'
         Detect=@('Adobe Acrobat'); FilePaths=@("$env:ProgramFiles\Adobe\Acrobat DC\Acrobat\Acrobat.exe")
         Boost=@{ Paths=@(@("$env:ProgramFiles\Adobe", "${env:ProgramFiles(x86)}\Common Files\Adobe") +
@@ -827,14 +833,14 @@ $Script:Apps = @(
     },
     [pscustomobject]@{
         # Siempre el ultimo: su monitor de comportamiento bloquea el runtime InstallScript de iManage.
-        Name='MDR Cortex XDR'; File='MDR_Windows_Andersen_8_2_x64.msi'; Type='msi'; Lane='msi'; Order=999; Timeout=480
+        Name='MDR Cortex XDR'; File='MDR_Windows_Andersen_8_2_x64.msi'; Type='msi'; Lane='msi'; Order=999; Timeout=120
         AfterAll=$true; MsiExtra='REBOOT=ReallySuppress'
         Detect=@('Cortex XDR','Palo Alto','Traps'); ServiceNames=@('cyserver','CyveraService')
     },
 
     # ---------- Carril EXE (sin Windows Installer, en paralelo al carril MSI) ----------
     [pscustomobject]@{
-        Name='Bit4id Middleware'; File='Bit4id_Middleware.exe'; Type='exe'; Lane='exe'; Order=10; Timeout=180
+        Name='Bit4id Middleware'; File='Bit4id_Middleware.exe'; Type='exe'; Lane='exe'; Order=10; Timeout=120
         Args='/S'
         Detect=@('Bit4id','Universal Middleware')
         FilePaths=@("$env:ProgramFiles\Bit4id\Universal MW\bin\bit4xpki.exe","${env:ProgramFiles(x86)}\Bit4id\Universal MW\bin\bit4xpki.exe")
@@ -843,7 +849,7 @@ $Script:Apps = @(
     [pscustomobject]@{
         # Inno Setup 571 MB. /NOPAGE es obligatorio en silencioso segun la guia de despliegue de
         # Wondershare (sin el, el instalador espera en la pagina final). /LOG deja traza propia.
-        Name='PDFelement Business'; File=$pdfExe; Type='inno'; Lane='exe'; Order=20; Timeout=480
+        Name='PDFelement Business'; File=$pdfExe; Type='inno'; Lane='exe'; Order=20; Timeout=180
         Args='/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOPAGE /NOCANCEL /CLOSEAPPLICATIONS'
         Detect=@('PDFelement','Wondershare PDFelement')
         FilePaths=@("$env:ProgramFiles\Wondershare\PDFelement\PDFelement.exe","${env:ProgramFiles(x86)}\Wondershare\PDFelement\PDFelement.exe")
@@ -852,7 +858,7 @@ $Script:Apps = @(
     },
     [pscustomobject]@{
         # Configura Chrome (y Firefox) al instalarse -> debe ir DESPUES de Chrome.
-        Name='Autofirma'; File='Autofirma_64_v1_9_installer.exe'; Type='exe'; Lane='exe'; Order=30; Timeout=180
+        Name='Autofirma'; File='Autofirma_64_v1_9_installer.exe'; Type='exe'; Lane='exe'; Order=30; Timeout=120
         Args='/S'; After=@('Google Chrome')
         Detect=@('Autofirma','AutoFirma')
         FilePaths=@("$env:ProgramFiles\Autofirma\Autofirma\Autofirma.exe","$env:ProgramFiles\AutoFirma\AutoFirma.exe")
@@ -860,7 +866,7 @@ $Script:Apps = @(
     },
     [pscustomobject]@{
         # MSIX (Windows 10 2004+): aprovisionado para todos los usuarios; cada perfil lo recibe al iniciar sesion.
-        Name='NanaZip'; File='NanaZip_*.msixbundle'; Type='appx'; Lane='exe'; Order=40; Timeout=180
+        Name='NanaZip'; File='NanaZip_*.msixbundle'; Type='appx'; Lane='exe'; Order=40; Timeout=120
         AppxName='40174MouriNaruto.NanaZip'
     }
 )
@@ -1176,6 +1182,24 @@ function Stop-JobTree {
     Write-Log "TIMEOUT $($Job.App.Name) ($($Job.Timeout)s) - colgado en: $($Job.HangInfo). Se corta y se sigue con las demas" 'WARN'
     Stop-ProcessTree -ProcessId $Job.Process.Id
     Stop-ProcessSafe -Names $Job.App.KillOnTimeout -WaitSec 1
+    # Un MSI cortado sigue en el servicio de Windows Installer (msiexec del sistema, fuera del arbol del proceso
+    # cortado): o retiene el mutex o deja el servicio atascado, y las MSI siguientes se colgarian una tras otra
+    # (lab: dnGrep congelado -> Everything colgado tambien). 30 s para que lo deshaga y se reinicia Windows
+    # Installer (sus procesos; el servicio vuelve a arrancar solo con la siguiente instalacion).
+    if ($Job.App.Lane -eq 'msi') {
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        while ((Test-MsiBusy) -and $sw.Elapsed.TotalSeconds -lt 30) { Start-Sleep -Seconds 2 }
+        $mp = @(Get-Process -Name 'msiexec' -ErrorAction SilentlyContinue)
+        if ($mp.Count) {
+            Write-Log "Tras cortar $($Job.App.Name) se reinicia Windows Installer ($($mp.Count) msiexec$(if (Test-MsiBusy) { ', seguia ocupado' }))" 'WARN'
+            # taskkill: el msiexec del servicio corre como SYSTEM (taskkill activa el privilegio de depuracion)
+            & "$env:SystemRoot\System32\taskkill.exe" /F /T /IM msiexec.exe 2>&1 | Out-Null
+            # Servicio nuevo ya: si no, la siguiente instalacion espera ~2 min a que Windows descarte el muerto (lab)
+            for ($i = 0; $i -lt 10 -and "$((Get-Service -Name msiserver -ErrorAction SilentlyContinue).Status)" -ne 'Stopped'; $i++) { Start-Sleep -Seconds 1 }
+            try { Start-Service -Name msiserver -ErrorAction Stop } catch {}
+            $Job.HangInfo = "$($Job.HangInfo); Windows Installer reiniciado"
+        }
+    }
 }
 #endregion
 
@@ -1346,8 +1370,9 @@ function Start-OfficeProcess {
     $Step.Record.attempts++
     $Step.Record.args_used = $Display
     $Step.Job = New-Job -App $Step.App -FilePath $FilePath -Arguments $Arguments -Display $Display -Attempt $Step.Record.attempts
-    # ODT solo baja lo de Outlook: 10 min y, si no, plan B (bootstrap, que baja todo Office: 20 min)
-    $Step.Job.Timeout = if ($Step.Mode -eq 'bootstrap') { 1200 } else { 600 }
+    # Outlook tiene que quedar si o si: margen amplio (depende de la red). ODT solo baja lo de Outlook (3 min en el
+    # lab): 15 min y, si no, plan B (bootstrap, que baja todo Office: 8-14 min en campo): 25 min
+    $Step.Job.Timeout = if ($Step.Mode -eq 'bootstrap') { 1500 } else { 900 }
     Set-AppRecord $State $Step.App.Name $Step.Record
 }
 
@@ -1514,11 +1539,28 @@ function Start-AppJob {
 
     $cmd = New-InstallCommand -App $app -State $State
     # Solo laboratorio: NODEDEPLOY_TEST_HANG="App:segundos" cambia el instalador de esa app por un proceso que se
-    # queda colgado (prueba del corte por tiempo, el diagnostico y que el resto siga).
+    # queda colgado (prueba del corte por tiempo, el diagnostico y que el resto siga). "App:segundos:freeze" deja
+    # el instalador real y a los 8 s congela Windows Installer: un MSI colgado de verdad (mutex retenido por el
+    # msiexec del servicio, fuera del arbol del proceso), para probar que se libera y las demas MSI siguen.
     if ($env:NODEDEPLOY_TEST_HANG -and -not $DryRun -and $env:NODEDEPLOY_TEST_HANG.Split(':')[0] -eq $app.Name) {
-        $app = $app.PSObject.Copy(); $app.Timeout = [int]$env:NODEDEPLOY_TEST_HANG.Split(':')[1]
-        $cmd.FilePath = Join-Path $PSHOME 'powershell.exe'; $cmd.Arguments = '-NoProfile -Command "Start-Sleep -Seconds 3600"'
-        Write-Log "PRUEBA: $($app.Name) se sustituye por un proceso colgado (timeout $($app.Timeout) s)" 'WARN'
+        $hp = $env:NODEDEPLOY_TEST_HANG.Split(':')
+        $app = $app.PSObject.Copy(); $app.Timeout = [int]$hp[1]
+        if ($hp.Count -ge 3 -and $hp[2] -eq 'freeze') {
+            $frz = @'
+Start-Sleep -Seconds 8
+[System.Diagnostics.Process]::EnterDebugMode()
+Add-Type -Name F -Namespace N -MemberDefinition '[DllImport("ntdll.dll")] public static extern int NtSuspendProcess(IntPtr h);'
+Get-Process msiexec -ErrorAction SilentlyContinue | ForEach-Object { [void][N.F]::NtSuspendProcess($_.Handle) }
+'@
+            $delay = if ($hp.Count -ge 4) { [int]$hp[3] } else { 8 }   # "App:segundos:freeze:retardo"
+            $frz = $frz -replace 'Start-Sleep -Seconds 8', "Start-Sleep -Seconds $delay"
+            $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($frz))
+            Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -ArgumentList "-NoProfile -EncodedCommand $enc" | Out-Null
+            Write-Log "PRUEBA: $($app.Name) con Windows Installer congelado a los $delay s (timeout $($app.Timeout) s)" 'WARN'
+        } else {
+            $cmd.FilePath = Join-Path $PSHOME 'powershell.exe'; $cmd.Arguments = '-NoProfile -Command "Start-Sleep -Seconds 3600"'
+            Write-Log "PRUEBA: $($app.Name) se sustituye por un proceso colgado (timeout $($app.Timeout) s)" 'WARN'
+        }
     }
     $display = if ($cmd.FilePath -eq $Script:MsiExec) { "msiexec.exe $($cmd.Arguments)" } else { "`"$($cmd.FilePath)`" $($cmd.Arguments)" }
     $rec.args_used   = Protect-Secret $display
@@ -1545,7 +1587,7 @@ function Get-RetryDelay {
     param([int]$ExitCode, [bool]$TimedOut, $Entry)
     if ($ExitCode -eq 1618) {
         $Entry.BusyRetries++
-        if ($Entry.BusyRetries -le 20) { $Entry.Attempt--; return 15 }
+        if ($Entry.BusyRetries -le 12) { $Entry.Attempt--; return 15 }   # max. 3 min; luego fallo y se sigue
         return $null
     }
     if ($TimedOut) { return $null }
@@ -1725,8 +1767,8 @@ function Invoke-InstallPlan {
                     Write-Log "[MSI] Windows Installer ocupado por otro proceso (Windows Update/Vantage?). Esperando para $($next.App.Name)... (${waited}s)" 'WARN'
                     $msiWaitLogged = Get-Date
                 }
-                if ($waited -lt 600) { continue }
-                Write-Log '[MSI] 10 min esperando el mutex MSI; se lanza igualmente (1618 -> reintento)' 'WARN'
+                if ($waited -lt 300) { continue }
+                Write-Log '[MSI] 5 min esperando el mutex MSI; se lanza igualmente (1618 -> reintento)' 'WARN'
             }
             $msiWaitSince = $null; $msiWaitLogged = $null
             $pending.Remove($next)
@@ -1786,7 +1828,8 @@ function Write-FinalReport {
     $okN   = @($apps | Where-Object { $_.status -in $Script:OkStatus }).Count
     $bad   = @($apps | Where-Object { $_.status -like 'fail*' -or $_.status -eq 'blocked' })
     $skipN = @($apps | Where-Object { $_.status -eq 'skipped_by_user' }).Count
-    $fmtT  = { param([int]$s) $t = Format-Duration $s; if ($s -gt 60) { "**$t** $iWarn" } else { $t } }
+    # Minutos en negrita; aviso si pasa de lo esperado: 1 min (Outlook, la excepcion: 5 min)
+    $fmtT  = { param([int]$s, [int]$lim = 60) $t = Format-Duration $s; if ($s -gt 60) { "**$t**$(if ($s -gt $lim) { " $iWarn" })" } else { $t } }
 
     $sb = New-Object Text.StringBuilder
     $add = { param([string]$l = '') [void]$sb.AppendLine($l) }
@@ -1857,7 +1900,7 @@ function Write-FinalReport {
     & $add '| App | Estado | Tiempo |'
     & $add '|---|---|---|'
     foreach ($w in ($rows | Sort-Object K, @{ Expression = 'S'; Descending = $true }, N)) {
-        & $add "| $($w.N) | $($w.E) | $(if ($w.S -ge 0) { & $fmtT $w.S } else { '-' }) |"
+        & $add "| $($w.N) | $($w.E) | $(if ($w.S -ge 0) { & $fmtT $w.S $(if ($w.N -like 'Outlook*') { 300 } else { 60 }) } else { '-' }) |"
     }
     & $add
 
@@ -1883,7 +1926,8 @@ function Write-FinalReport {
     if ($Script:PolicyResult -and $Script:PolicyResult.Contains('PDF24 Creator')) { & $add '- **PDF24:** solo en local (sin servicios online); en el escritorio solo PDF24 Toolbox' }
     if ($Script:OptimizeResult) {
         $o = $Script:OptimizeResult
-        $nApps = @("$($o['Apps de Store quitadas'])" -split ', ' | Where-Object { $_ -and $_ -notmatch 'aprovisionada|ninguna' }).Count
+        # Cada app sale dos veces (instalada + aprovisionada para usuarios nuevos): se cuentan apps, no paquetes
+        $nApps = @("$($o['Apps de Store quitadas'])" -split ', ' | Where-Object { $_ -and $_ -notmatch '^ninguna' } | ForEach-Object { $_ -replace ' \(aprovisionada\)$', '' } | Select-Object -Unique).Count
         $off = @($o.Keys | Where-Object { $_ -like 'Arranque:*' -and "$($o[$_])" -eq 'deshabilitado' } | ForEach-Object { $_ -replace '^Arranque: ', '' -replace '\.lnk$', '' })
         & $add ("- **Optimizacion:** {0} apps de Store quitadas | sin arrancar con Windows: {1} | barra de tareas: Outlook y Teams, sin Store | TRIM {2}" -f $nApps, $(if ($off) { $off -join ', ' } else { '-' }), "$($o['TRIM (SSD)'])")
     }
@@ -2202,7 +2246,7 @@ if ($Script:DoOptimize -and (Get-Command Set-StartupPolicy -ErrorAction Silently
             $opt['Apps de Store quitadas'] = if (@($d.removed).Count) { @($d.removed) -join ', ' } else { 'ninguna (no estaban)' }
             $opt['Directivas'] = @($d.policies) -join '; '
             if (@($d.errors).Count) { $opt['Avisos de la limpieza'] = (@($d.errors) | Select-Object -First 5) -join ' | ' }
-            Write-Log "Limpieza: $(@($d.removed).Count) apps quitadas en $($d.seconds)s" 'OK'
+            Write-Log "Limpieza: $(@(@($d.removed) | ForEach-Object { $_ -replace ' \(aprovisionada\)$', '' } | Select-Object -Unique).Count) apps quitadas en $($d.seconds)s" 'OK'
         } else {
             $opt['Limpieza'] = 'sin resultado (no termino a tiempo)'
             Write-Log 'Limpieza de apps sin resultado (no termino a tiempo)' 'WARN'

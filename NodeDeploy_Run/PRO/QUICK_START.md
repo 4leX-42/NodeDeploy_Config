@@ -68,7 +68,7 @@ OK   Outlook clasico [odt, exit 0] (183s)
   RESULT: SUCCESS   Phase=full   exit=0
 ```
 
-Se abre `POSTVALIDATE_REPORT.md`: resultado en una línea, **Atención** (solo si hay algo que hacer) y la tabla App / Estado / **Tiempo** (lo que pasa de 1 minuto, marcado). `lusrmgr.msc` / `sysdm.cpl` solo se abren si hay algo de cuentas o dominio que revisar.
+Se abre `POSTVALIDATE_REPORT.md`: resultado en una línea, **Atención** (solo si hay algo que hacer) y la tabla App / Estado / **Tiempo** (minutos en negrita; ⚠ si pasa de 1 minuto, o de 5 en Outlook). `lusrmgr.msc` / `sysdm.cpl` solo se abren si hay algo de cuentas o dominio que revisar.
 
 Al terminar, el zip de logs se sube a la carpeta de red (`NodeDeploy_Success` / `NodeDeploy_Errors`) y, si todo quedó listo, **la carpeta del escritorio se borra sola** (si las actualizaciones siguen, cuando terminen; `-KeepFolder` la conserva).
 

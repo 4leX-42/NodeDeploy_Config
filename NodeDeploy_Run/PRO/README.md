@@ -150,7 +150,7 @@ Descarga en prioridad normal (la baja no frenaba a Outlook, pero Windows la limi
 | Falla con un código de error | 1 reintento a los 10 s (por si era algo pasajero); si vuelve a fallar, se apunta y se sigue. |
 | Windows Installer ocupado (1618) | Espera y reintenta sin gastar intentos (como siempre). |
 
-Tiempos límite por app de 3-5 veces su máximo visto (Outlook, 20 min: depende de la descarga). `-MaxRetries` (por defecto 1) para los fallos con código. Prueba de laboratorio: `NODEDEPLOY_TEST_HANG="App:segundos"` cambia el instalador de esa app por un proceso colgado.
+Tiempo límite por app ≈ 2 veces lo que tarda normalmente en un portátil real con ESET/Cortex (mínimo 1,5 min): p. ej. AnyDesk 1,5 min, Chrome 3,5, iManage Drive 4, PDFelement 3, Adobe 8 (tarda 1,5-5). El reloj empieza al lanzar su instalador. **Outlook es la excepción: tiene que quedar sí o sí**: 15 min por ODT y, si no, el plan B del instalador de Microsoft con 25 min (depende de la red). Al cortar un MSI colgado se reinicia Windows Installer (30 s de gracia; luego se cortan sus procesos y arranca uno nuevo): si no, su instalación sigue atascada en el servicio y las MSI siguientes se colgarían también (probado en la VM congelando Windows Installer a mitad de PDF24: Adobe se instaló bien después). Con Windows Installer ocupado por otro programa: máx. 5 min antes de lanzar + 3 min de reintentos (1618) por app. `-MaxRetries` (por defecto 1) para los fallos con código. Prueba de laboratorio: `NODEDEPLOY_TEST_HANG="App:segundos"` cambia el instalador de esa app por un proceso colgado.
 
 ## Logs y carpeta del escritorio (v5.7)
 

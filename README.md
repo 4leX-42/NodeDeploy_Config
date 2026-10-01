@@ -14,7 +14,7 @@
 
 **Si una app falla**: se corta rápido (tiempo límite realista por app; si se cuelga no se reintenta) y se sigue con las demás. El informe dice en qué se quedó (procesos y ventanas) y las últimas líneas de su log.
 
-**Informe**: `NodeDeploy_Run\POSTVALIDATE_REPORT.md`, corto: resultado en una línea, "Atención" solo si hay algo que hacer, tabla App / Estado / **Tiempo** (lo que pasa de 1 minuto, marcado) y el equipo en pocas líneas.
+**Informe**: `NodeDeploy_Run\POSTVALIDATE_REPORT.md`, corto: resultado en una línea, "Atención" solo si hay algo que hacer, tabla App / Estado / **Tiempo** (minutos en negrita; ⚠ si pasa de 1 minuto, o de 5 en Outlook) y el equipo en pocas líneas.
 
 **Logs**: al terminar, un zip con todo (informe, logs, equipo) se sube a la carpeta de red de `NodeDeploy_Run\PRO\Ajustes.local.txt` (fuera de git), en `NodeDeploy_Success` o `NodeDeploy_Errors`, con las credenciales del dominio. Sin red, queda en `LOGS_preparation\` al lado de la carpeta. Nunca frena nada.
 

@@ -3,9 +3,10 @@
     con los argumentos indicados. Resultados: Pack-Results.ps1 (aparte).
     Los argumentos llegan sueltos (LabCommon no admite comillas): Run-DeployBat.ps1 full -SkipAV -Domain no
 #>
-# "ENV:NOMBRE=valor" pone una variable de entorno para Deploy (p. ej. ENV:NODEDEPLOY_TEST_HANG=Everything:60)
+# "ENV:NOMBRE=valor" pone una variable de entorno para Deploy (p. ej. ENV:NODEDEPLOY_TEST_HANG=Everything:60);
+# '+' = espacio (los argumentos llegan sueltos): ENV:NODEDEPLOY_TEST_HANG=PDF24+Creator:60:freeze:10
 $rest = @()
-foreach ($a in $args) { if ("$a" -match '^ENV:(\w+)=(.+)$') { Set-Item -Path "env:$($matches[1])" -Value $matches[2].Trim() } else { $rest += $a } }
+foreach ($a in $args) { if ("$a" -match '^ENV:(\w+)=(.+)$') { Set-Item -Path "env:$($matches[1])" -Value ($matches[2].Trim() -replace '\+', ' ') } else { $rest += $a } }
 $BatArgs = if ($rest) { ($rest -join ' ').Trim() } else { 'full -SkipAV -Domain no' }
 $run = 'C:\LabRun'; $root = 'C:\nodedeploy'
 New-Item -ItemType Directory -Force -Path $run | Out-Null
