@@ -1,24 +1,33 @@
-﻿<#
+<#
 .SYNOPSIS
-    Windows Update de NodeDeploy (proceso aparte: lo lanza Deploy.ps1 en t=0).
+    Windows Update de NodeDeploy: solo controladores y firmware (BIOS). Proceso aparte (lo lanza Deploy.ps1 en t=0).
 .DESCRIPTION
-    Con el agente de Windows Update (API COM de Windows, sin módulos externos) hace lo mismo que "Descargar e instalar
-    todo" de Configuración, sincronizado con el resto del despliegue:
-      1) desde t=0, en paralelo a las apps: actualizaciones de software (acumulativa, seguridad, .NET, herramienta de
-         eliminación de software malintencionado, Defender...). Nunca actualizaciones de características (cambio de
-         versión de Windows) ni versiones preliminares;
-      2) cuando Deploy.ps1 lo indica con el fichero señal (apps y Lenovo ya terminados): controladores de Windows
-         Update, después de los de Lenovo para no pisarse. El firmware, solo con cargador y BitLocker en pausa.
-    No reinicia: informa si hace falta; el reinicio lo hace Deploy.bat al final, después del dominio. Resultado en JSON.
+    Con el agente de Windows Update (API COM de Windows, sin modulos externos):
+      1) desde t=0, en paralelo a las apps: solo sincroniza con Windows Update (una busqueda de software, sin
+         instalar nada), para que la de controladores del final sea rapida. La de controladores NO va aqui: en el
+         lab, en paralelo a las apps, tardo 12 min y bloqueo a DISM (NanaZip colgado);
+      2) cuando Deploy.ps1 lo indica con el fichero senal (apps y Lenovo ya terminados, para no pisarse con los
+         controladores de Lenovo): busca los controladores y el firmware, los descarga y los instala uno a uno.
+         El firmware, solo con cargador y con BitLocker en pausa.
+    Lo demas (acumulativa, .NET, Defender, version nueva de Windows...) NO: lo instala Windows por su cuenta
+    despues. Era lo que alargaba la espera del final (~30 min) sin que se viera nada.
+    Progreso en -ProgressFile, una linea ("instalando 2/5: ..."), que Deploy.ps1 ensena mientras espera.
+    No reinicia: informa si hace falta; el reinicio lo hace Deploy.bat al final, despues del dominio. Resultado en JSON.
+    Solo ASCII: Windows PowerShell 5.1 lee los .ps1 sin BOM como ANSI.
 #>
 param(
     [ValidateSet('', 'run')][string]$WuMode = '',
     [string]$OutJson,
     [string]$SignalFile,
-    [switch]$NoDrivers
+    [string]$ProgressFile
 )
 
-$Script:WuBusy = -2145124330   # 0x80240016 WU_E_INSTALL_NOT_ALLOWED: otra instalacion en curso -> esperar y reintentar
+$Script:WuBusy  = -2145124330   # 0x80240016 WU_E_INSTALL_NOT_ALLOWED: otra instalacion en curso -> esperar y reintentar
+$Script:DrvQuery = "IsInstalled=0 and IsHidden=0 and Type='Driver'"   # tambien opcionales: solo los del hardware presente
+
+function Set-WuProgress([string]$Text) {
+    if ($ProgressFile) { try { Set-Content -LiteralPath $ProgressFile -Value $Text -Encoding UTF8 -ErrorAction Stop } catch {} }
+}
 
 function Test-WuOnACPower {
     try { $b = Get-CimInstance -Namespace root\wmi -ClassName BatteryStatus -ErrorAction Stop | Select-Object -First 1; if ($null -ne $b) { return [bool]$b.PowerOnline } } catch {}
@@ -26,77 +35,25 @@ function Test-WuOnACPower {
     return $true
 }
 
-function Get-WuSkipReason {
-    # Sin efectos: por que NO se instala una actualizacion ($null = se instala). Las actualizaciones de version de
-    # Windows solo si son un paquete de habilitacion (p. ej. 26H2 sobre 24H2/25H2: pequeno, un reinicio); un cambio
-    # de version completo (GB, horas) no. Las versiones preliminares, nunca.
-    param([string]$Title, [string[]]$Categories, [double]$SizeBytes)
-    if ($Title -match '(?i)\bpreview\b|versi.n preliminar|vista previa') { return 'version preliminar' }
-    $feature = ($Categories -contains 'Upgrades') -or $Title -match '(?i)feature update|actualizaci.n de caracter.sticas|windows 11, versi.n \d\dH\d|windows 11, version \d\dH\d'
-    if ($feature) {
-        $enable = $Title -match '(?i)enablement|habilitaci.n' -or ($SizeBytes -gt 0 -and $SizeBytes -lt 200MB)
-        if (-not $enable) { return 'cambio de version completo de Windows (horas): no se instala en la preparacion' }
-    }
-    return $null
+function Get-WuDrivers {
+    param($Session)
+    $sr = $Session.CreateUpdateSearcher().Search($Script:DrvQuery)
+    @(for ($i = 0; $i -lt $sr.Updates.Count; $i++) {
+        $u = $sr.Updates.Item($i)
+        if ($u.Title -notmatch '(?i)\bpreview\b|versi.n preliminar|vista previa') { $u }
+    })
 }
 
-function Invoke-WuPhase {
-    # Busca, descarga e instala un grupo de actualizaciones. Apunta resultado en $Res.
-    # $Done: IDs ya instalados en esta ejecucion (hasta reiniciar Windows los sigue dando por no instalados).
-    param($Session, [string]$Criteria, [string]$Label, $Res, [switch]$Drivers, $Done)
-    $sr = $Session.CreateUpdateSearcher().Search($Criteria)
-    $coll = New-Object -ComObject Microsoft.Update.UpdateColl
-    $firmware = $false
-    for ($i = 0; $i -lt $sr.Updates.Count; $i++) {
-        $u = $sr.Updates.Item($i)
-        if ($Done -and $Done.Contains("$($u.Identity.UpdateID)")) { continue }
-        $cats = @(for ($c = 0; $c -lt $u.Categories.Count; $c++) { $u.Categories.Item($c).Name })
-        $skip = Get-WuSkipReason -Title $u.Title -Categories $cats -SizeBytes ([double]$u.MaxDownloadSize)
-        if ($skip) { if ($Res.skipped -notcontains "$($u.Title) ($skip)") { $Res.skipped += "$($u.Title) ($skip)" }; continue }
-        if ($Drivers -and "$($u.DriverClass)" -match '(?i)firmware') {
-            if (-not (Test-WuOnACPower)) { $Res.skipped += "$($u.Title) (firmware sin cargador: conectalo y relanza el script)"; continue }
-            $firmware = $true
-        }
-        if (-not $u.EulaAccepted) { try { $u.AcceptEula() } catch {} }
-        [void]$coll.Add($u)
-    }
-    $Res.found += $coll.Count
-    if ($coll.Count -eq 0) { $Res.notes += "${Label}: nada pendiente"; return }
-    if ($firmware) {
-        try {
-            $bl = Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction Stop
-            if ("$($bl.ProtectionStatus)" -eq 'On') { Suspend-BitLocker -MountPoint $env:SystemDrive -RebootCount 1 -ErrorAction Stop | Out-Null; $Res.notes += 'BitLocker en pausa hasta el siguiente reinicio (firmware de Windows Update)' }
-        } catch { $Res.notes += "BitLocker: $($_.Exception.Message)" }
-    }
-    # Descarga en prioridad normal. La baja no frenaba a Outlook, pero Windows la limita aunque la red este libre
-    # (lab: 31 min para la acumulativa); con Outlook por ODT (~3 min, poca descarga) ya no hace falta protegerlo.
-    $dl = $Session.CreateUpdateDownloader(); $dl.Updates = $coll
-    try { $dl.Priority = 2 } catch {}
-    $swp = [Diagnostics.Stopwatch]::StartNew()
-    try { [void]$dl.Download() } catch { $Res.notes += "${Label} descarga: $($_.Exception.Message)" }
-    $tDl = [int]$swp.Elapsed.TotalSeconds
-    $ready = New-Object -ComObject Microsoft.Update.UpdateColl
-    for ($i = 0; $i -lt $coll.Count; $i++) {
-        $u = $coll.Item($i)
-        if ($u.IsDownloaded) { [void]$ready.Add($u) } else { $Res.failed += "$($u.Title): no se pudo descargar" }
-    }
-    if ($ready.Count -eq 0) { return }
-    # Instalacion; si Windows esta instalando otra cosa (WU_E_INSTALL_NOT_ALLOWED), se espera y se reintenta
-    $inst = $Session.CreateUpdateInstaller(); $inst.Updates = $ready
-    try { $inst.ForceQuiet = $true } catch {}
-    $ir = $null
-    $swp.Restart()
-    for ($try = 1; $try -le 10 -and -not $ir; $try++) {
-        try { $ir = $inst.Install() }
-        catch { if ($_.Exception.HResult -eq $Script:WuBusy -and $try -lt 10) { Start-Sleep -Seconds 60 } else { $Res.failed += "${Label}: $($_.Exception.Message)"; return } }
-    }
-    for ($i = 0; $i -lt $ready.Count; $i++) {
-        $r = $ir.GetUpdateResult($i); $t = $ready.Item($i).Title
-        if ($r.ResultCode -in 2, 3) { $Res.installed += $t; if ($Done) { [void]$Done.Add("$($ready.Item($i).Identity.UpdateID)") } }
-        else { $Res.failed += ("{0}: codigo {1} (0x{2:X8})" -f $t, $r.ResultCode, $r.HResult) }
-    }
-    if ($ir.RebootRequired) { $Res.reboot = $true }
-    $Res.notes += "${Label}: $($ready.Count) (descarga $tDl s, instalacion $([int]$swp.Elapsed.TotalSeconds) s)"
+function Save-WuDriver {
+    # Descarga un controlador (si no lo estaba ya). $true = listo para instalar.
+    param($Session, $Update)
+    if ($Update.IsDownloaded) { return $true }
+    if (-not $Update.EulaAccepted) { try { $Update.AcceptEula() } catch {} }
+    $c = New-Object -ComObject Microsoft.Update.UpdateColl; [void]$c.Add($Update)
+    $d = $Session.CreateUpdateDownloader(); $d.Updates = $c
+    try { $d.Priority = 2 } catch {}
+    try { [void]$d.Download() } catch {}
+    return [bool]$Update.IsDownloaded
 }
 
 function Invoke-WindowsUpdate {
@@ -104,23 +61,73 @@ function Invoke-WindowsUpdate {
     $res = [ordered]@{ found = 0; installed = @(); failed = @(); skipped = @(); reboot = $false; notes = @(); seconds = 0 }
     $session = New-Object -ComObject Microsoft.Update.Session
     $session.ClientApplicationID = 'NodeDeploy'
-    $done = [Collections.Generic.HashSet[string]]::new()
-    $soft = "IsInstalled=0 and IsHidden=0 and Type='Software' and BrowseOnly=0"
-    # 1) Software, en paralelo a las apps
-    Invoke-WuPhase -Session $session -Criteria $soft -Label 'software' -Res $res -Done $done
-    # 2) Al terminar apps y Lenovo (fichero señal): controladores y lo que aparezca encadenado a lo ya instalado
-    #    (p. ej. la plataforma de Defender tras la de seguridad)
+
+    # 1) Ya, en paralelo a las apps: sincronizar (busqueda de software; no se instala nada de eso)
+    Set-WuProgress 'sincronizando con Windows Update'
+    $swS = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        $soft = $session.CreateUpdateSearcher().Search("IsInstalled=0 and IsHidden=0 and Type='Software' and BrowseOnly=0").Updates.Count
+        $res.notes += "software pendiente: $soft (acumulativa, .NET, Defender...): no se instala aqui, lo pone Windows por su cuenta (sincronizado en $([int]$swS.Elapsed.TotalSeconds) s)"
+    } catch { $res.notes += "sincronizacion: $($_.Exception.Message)" }
+
+    # 2) Con apps y Lenovo terminados (fichero senal): controladores y firmware, uno a uno
     if ($SignalFile) {
+        Set-WuProgress 'esperando a que terminen las apps y Lenovo'
         $deadline = (Get-Date).AddMinutes(180)
         while (-not (Test-Path $SignalFile) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 5 }
     }
-    #    Controladores: tambien los opcionales (Windows Update solo ofrece los del hardware presente).
-    if (-not $NoDrivers) {
-        Invoke-WuPhase -Session $session -Criteria "IsInstalled=0 and IsHidden=0 and Type='Driver'" -Label 'controladores' -Res $res -Drivers -Done $done
+    Set-WuProgress 'buscando controladores y firmware'
+    $swB = [Diagnostics.Stopwatch]::StartNew()
+    $todo = @(Get-WuDrivers -Session $session)
+    $tB = [int]$swB.Elapsed.TotalSeconds
+    $res.found = $todo.Count
+    if (-not $todo.Count) {
+        $res.notes += "controladores: nada pendiente (busqueda $tB s)"
+        Set-WuProgress 'nada pendiente'
+        $res.seconds = [int]$sw.Elapsed.TotalSeconds
+        return $res
     }
-    #    Software de nuevo, incluido lo opcional: la version nueva de Windows si es un paquete de habilitacion (26H2)
-    Invoke-WuPhase -Session $session -Criteria "IsInstalled=0 and IsHidden=0 and Type='Software'" -Label 'software (2a vuelta)' -Res $res -Done $done
+    $swDl = [Diagnostics.Stopwatch]::StartNew()
+    for ($i = 0; $i -lt $todo.Count; $i++) {
+        Set-WuProgress ('descargando {0}/{1}: {2}' -f ($i + 1), $todo.Count, $todo[$i].Title)
+        [void](Save-WuDriver -Session $session -Update $todo[$i])
+    }
+    $tDl = [int]$swDl.Elapsed.TotalSeconds
+    $swIn = [Diagnostics.Stopwatch]::StartNew(); $blDone = $false
+    for ($i = 0; $i -lt $todo.Count; $i++) {
+        $u = $todo[$i]; $t = $u.Title
+        if ("$($u.DriverClass)" -match '(?i)firmware') {
+            if (-not (Test-WuOnACPower)) { $res.skipped += "$t (firmware sin cargador: conectalo y relanza el script)"; continue }
+            if (-not $blDone) {
+                $blDone = $true
+                try {
+                    $bl = Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction Stop
+                    if ("$($bl.ProtectionStatus)" -eq 'On') { Suspend-BitLocker -MountPoint $env:SystemDrive -RebootCount 1 -ErrorAction Stop | Out-Null; $res.notes += 'BitLocker en pausa hasta el siguiente reinicio (firmware de Windows Update)' }
+                } catch { $res.notes += "BitLocker: $($_.Exception.Message)" }
+            }
+        }
+        Set-WuProgress ('instalando {0}/{1}: {2}' -f ($i + 1), $todo.Count, $t)
+        if (-not (Save-WuDriver -Session $session -Update $u)) { $res.failed += "${t}: no se pudo descargar"; continue }
+        $c = New-Object -ComObject Microsoft.Update.UpdateColl; [void]$c.Add($u)
+        $inst = $session.CreateUpdateInstaller(); $inst.Updates = $c
+        try { $inst.ForceQuiet = $true } catch {}
+        $ir = $null; $err = $null
+        # Si Windows esta instalando otra cosa (WU_E_INSTALL_NOT_ALLOWED), se espera y se reintenta (max. 5 min)
+        for ($try = 1; $try -le 10 -and -not $ir; $try++) {
+            try { $ir = $inst.Install() }
+            catch {
+                if ($_.Exception.HResult -eq $Script:WuBusy -and $try -lt 10) { Set-WuProgress ('esperando (Windows instala otra cosa) {0}/{1}: {2}' -f ($i + 1), $todo.Count, $t); Start-Sleep -Seconds 30 }
+                else { $err = $_.Exception.Message; break }
+            }
+        }
+        if (-not $ir) { $res.failed += "${t}: $err"; continue }
+        $r = $ir.GetUpdateResult(0)
+        if ($r.ResultCode -in 2, 3) { $res.installed += $t } else { $res.failed += ('{0}: codigo {1} (0x{2:X8})' -f $t, $r.ResultCode, $r.HResult) }
+        if ($ir.RebootRequired) { $res.reboot = $true }
+    }
+    $res.notes += "controladores: $($todo.Count) (busqueda $tB s, descarga $tDl s, instalacion $([int]$swIn.Elapsed.TotalSeconds) s)"
     try { if ((New-Object -ComObject Microsoft.Update.SystemInfo).RebootRequired) { $res.reboot = $true } } catch {}
+    Set-WuProgress ('terminado: {0} instalados, {1} con fallo' -f @($res.installed).Count, @($res.failed).Count)
     $res.seconds = [int]$sw.Elapsed.TotalSeconds
     return $res
 }

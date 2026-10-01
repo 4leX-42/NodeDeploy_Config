@@ -111,7 +111,7 @@ El zip de la ejecución está en la carpeta de red (`NodeDeploy_Success` o `Node
 
 ## Windows Update
 
-Sección **Windows Update** de `POSTVALIDATE_REPORT.md`: instaladas, con fallo y no instaladas (cambios de versión de Windows y versiones preliminares se saltan a propósito). Tras el reinicio, en Configuración → Windows Update no debería quedar nada pendiente salvo lo opcional.
+Línea **Windows Update** de `POSTVALIDATE_REPORT.md`: controladores y firmware instalados / con fallo (solo eso: la acumulativa, .NET, Defender… los instala Windows por su cuenta después, es normal verlos pendientes en Configuración → Windows Update).
 
 ## Actualizaciones Lenovo
 

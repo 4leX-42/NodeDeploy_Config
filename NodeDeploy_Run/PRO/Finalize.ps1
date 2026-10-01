@@ -105,26 +105,37 @@ function Select-UiOption {
     Write-Host "  $Title" -ForegroundColor Green -NoNewline
     Write-Host '   ↑↓ mover · enter elegir · o pulsa el número' -ForegroundColor DarkGreen
     Write-Host ''
-    # Cada línea ocupa justo $W columnas: al redibujar, la barra y las líneas normales se pisan enteras
+    # Cada línea ocupa justo $W columnas (recortada si la ventana es estrecha): al redibujar, la barra y las
+    # líneas normales se pisan enteras y nunca saltan de línea
+    $cut = { param([string]$s, [int]$n) if ($n -le 0) { '' } elseif ($s.Length -gt $n) { $s.Substring(0, $n) } else { $s.PadRight($n) } }
     $draw = {
         param([int]$S)
         for ($i = 0; $i -lt $Rows.Count; $i++) {
             $r = $Rows[$i]
             if ($i -eq $S) {
                 Write-Host '  ' -NoNewline
-                Write-Host (' ► {0,2}  {1}{2}' -f $r.Key, "$($r.Text)".PadRight($nameW), $r.Hint).PadRight($W - 2) -ForegroundColor Black -BackgroundColor Green
+                Write-Host (& $cut (' ► {0,2}  {1}{2}' -f $r.Key, "$($r.Text)".PadRight($nameW), $r.Hint) ($W - 2)) -ForegroundColor Black -BackgroundColor Green
             } else {
+                $line = & $cut ('{0,2}  {1}{2}' -f $r.Key, "$($r.Text)".PadRight($nameW), $r.Hint) ($W - 5)
                 Write-Host '     ' -NoNewline
-                Write-Host ('{0,2}  ' -f $r.Key) -ForegroundColor DarkGreen -NoNewline
-                Write-Host "$($r.Text)".PadRight($nameW) -ForegroundColor Green -NoNewline
-                Write-Host "$($r.Hint)".PadRight([Math]::Max(0, $W - 9 - $nameW)) -ForegroundColor DarkGray
+                Write-Host $line.Substring(0, [Math]::Min(4, $line.Length)) -ForegroundColor DarkGreen -NoNewline
+                if ($line.Length -gt 4) {
+                    $nm = $line.Substring(4, [Math]::Min($nameW, $line.Length - 4))
+                    Write-Host $nm -ForegroundColor Green -NoNewline
+                    Write-Host $line.Substring(4 + $nm.Length) -ForegroundColor DarkGray
+                } else { Write-Host '' }
             }
         }
     }
     $sel = [Math]::Max(0, [Math]::Min($Default, $Rows.Count - 1))
     $cv = $null; try { $cv = [Console]::CursorVisible; [Console]::CursorVisible = $false } catch {}
+    # Primero se reserva el sitio (si hace falta, la pantalla corre ahora) y se vuelve arriba: si la pantalla
+    # corría mientras se dibujaba, la posición quedaba desplazada y al redibujar salían líneas repetidas
+    # (en campo: "dos Madrid" al bajar)
+    Write-Host ("`n" * ($Rows.Count - 1))
+    [Console]::SetCursorPosition(0, [Math]::Max(0, [Console]::CursorTop - $Rows.Count))
+    $top = [Console]::CursorTop
     & $draw $sel
-    $top = [Console]::CursorTop - $Rows.Count
     $buf = ''; $last = [datetime]::MinValue
     try {
         while ($true) {

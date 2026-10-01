@@ -68,10 +68,10 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
      │                                                                                     │
      ├─ Lenovo (background, Lenovo.ps1) ── controladores ya; red + firmware/BIOS al final ─┤
      │                                                                                     │
-     └─ Windows Update (background, WindowsUpdate.ps1) ── software ya; drivers al final ───┘
+     └─ Windows Update (background, WindowsUpdate.ps1) ── sincroniza ya; drivers al final ───────┘
 ```
 
-**Windows Update** (`WindowsUpdate.ps1`, el agente de Windows Update de Windows, sin módulos externos): lo mismo que "Descargar e instalar todo" de Configuración. Las de software (acumulativa, seguridad, .NET, herramienta de eliminación de software malintencionado, Defender) se descargan e instalan desde t=0, en paralelo a las apps; los controladores de Windows Update (también los opcionales), al terminar las apps y Lenovo (así no se pisan con los de Lenovo); firmware solo con cargador. La versión nueva de Windows solo si es un paquete de habilitación (p. ej. **26H2**, KB5121794: pequeño y un reinicio); un cambio de versión completo (horas) o una versión preliminar, nunca. El reinicio que pidan entra en el reinicio automático del final.
+**Windows Update** (`WindowsUpdate.ps1`, el agente de Windows Update de Windows, sin módulos externos): **solo controladores y firmware (BIOS)**. Desde t=0 solo sincroniza; al terminar las apps y Lenovo los busca, descarga e instala uno a uno (así no se pisan con los de Lenovo), diciendo en la consola cuál instala; firmware solo con cargador. La acumulativa, .NET, Defender y la versión nueva de Windows las instala Windows por su cuenta después (eran ~30 min de espera). El reinicio que pidan entra en el reinicio automático del final.
 
 **Actualizaciones Lenovo** (`Lenovo.ps1`, módulo oficial `Lenovo.Client.Update`, el mismo catálogo por modelo que Commercial Vantage): solo lo aplicable al equipo, desatendido y crítico/recomendado. Los controladores se instalan mientras van las apps; los de red (LAN/WiFi/WWAN), cuando terminan las apps (no cortan descargas); firmware y BIOS, lo último, **solo con el cargador conectado** y con BitLocker en pausa: se graban en el reinicio final. Nunca instala lo que reinicia al momento (p. ej. firmware de docks) ni reinicia por su cuenta. Resultado en el informe, sección "Actualizaciones Lenovo".
 

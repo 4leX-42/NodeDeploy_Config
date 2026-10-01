@@ -129,18 +129,16 @@ Proceso aparte desde t=0, solo en equipos Lenovo, con el módulo oficial `Lenovo
 
 No reinicia a mitad: informa de lo pendiente en la sección **Actualizaciones Lenovo** del informe y el reinicio (o apagado, si el firmware lo pide) lo hace el reinicio automático del final, después del dominio. Deploy.ps1 espera a que acabe (máx. 30 min) antes del cierre del equipo. `-NoLenovoUpdates` lo omite; `-NoBIOS` deja fuera firmware y BIOS.
 
-## Windows Update (v5.6, `WindowsUpdate.ps1`)
+## Windows Update (v5.7.3, `WindowsUpdate.ps1`): solo controladores y firmware
 
-Proceso aparte desde t=0 con el agente de Windows Update (API COM `Microsoft.Update.Session` de Windows, sin módulos externos): lo mismo que "Descargar e instalar todo" de Configuración.
+Proceso aparte desde t=0 con el agente de Windows Update (API COM `Microsoft.Update.Session` de Windows, sin módulos externos). **Solo controladores y firmware (BIOS)**: es lo que hace falta para entregar el portátil. La acumulativa, .NET, Defender, la versión nueva de Windows… no: los instala Windows por su cuenta después (eran ~30 min de espera al final sin ver nada).
 
 | Qué | Cuándo |
 |---|---|
-| Software: acumulativa, seguridad, .NET, herramienta de eliminación de software malintencionado, Defender (`Type='Software' and BrowseOnly=0`) | desde t=0, en paralelo a las apps |
-| Controladores de Windows Update, también los opcionales (`Type='Driver'`) | al terminar las apps y Lenovo (después de los de Lenovo, para no pisarse); firmware solo con cargador y BitLocker en pausa |
-| Segunda vuelta de software (incluido lo opcional): lo encadenado (p. ej. plataforma de Defender) y la **versión nueva de Windows si es paquete de habilitación** (26H2 sobre 24H2/25H2, KB5121794: pequeño, un reinicio) | al terminar las apps y Lenovo |
-| Cambio de versión completo (GB, horas) y versiones preliminares | nunca (`Get-WuSkipReason`) |
+| Sincronizar con Windows Update (una búsqueda de software; no se instala nada de eso) | desde t=0, en paralelo a las apps: así la de controladores del final tarda poco |
+| Buscar, descargar e instalar **uno a uno** los controladores y el firmware (`Type='Driver'`, también los opcionales: solo los del hardware presente) | al terminar las apps y Lenovo (después de los de Lenovo, para no pisarse); firmware solo con cargador y BitLocker en pausa. La búsqueda de controladores no va en paralelo a las apps: en el lab tardó 12 min y bloqueó a DISM (NanaZip colgado) |
 
-Descarga en prioridad normal (la baja no frenaba a Outlook, pero Windows la limita aunque la red esté libre: 31 min para la acumulativa en el lab; con Outlook por ODT ya no hace falta). Si Windows está instalando otra cosa (`WU_E_INSTALL_NOT_ALLOWED`), espera y reintenta. No reinicia: si hace falta, entra en el reinicio automático del final (después del dominio). Deploy.ps1 espera a que termine (máx. 45 min); si sigue, lo recoge el vigilante. Tiempos de descarga e instalación por fase en el informe. `-NoWindowsUpdate` lo omite.
+Mientras espera, la consola dice qué hace (`[WU] instalando 2/5: Intel - Bluetooth...`; cada minuto, que sigue vivo). La primera sincronización depende de los servidores de Microsoft (lab: de < 2 min a 10 min) y mientras dura DISM se queda colgado: **NanaZip** (la única app con DISM) espera a que termine (máx. 15 min, avisando cada minuto). Máx. 20 min: si no, sigue en segundo plano y el vigilante reinicia cuando acabe. Si Windows está instalando otra cosa (`WU_E_INSTALL_NOT_ALLOWED`), espera y reintenta (máx. 5 min por controlador). No reinicia: si hace falta, entra en el reinicio automático del final (después del dominio). `-NoWindowsUpdate` lo omite.
 
 ## Fallos: rápido y se sigue (v5.7)
 

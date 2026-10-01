@@ -89,6 +89,11 @@
     quedar si o si: 15 min ODT / 25 min plan B). Un MSI cortado que deja Windows Installer ocupado: 30 s de
     gracia y se cortan los msiexec (antes las MSI siguientes esperaban 10 + 5 min cada una). Windows Installer
     ocupado por otro programa: max. 5 min + 3 min de 1618 por app.
+    v5.7.3: Windows Update solo controladores y firmware (BIOS): sincroniza desde t=0 y al terminar apps y Lenovo
+    los busca, descarga e instala uno a uno, ensenando que hace (wu_progreso.txt); max. 20 min. La acumulativa,
+    .NET, Defender... los instala Windows por su cuenta (eran ~30 min de espera sin ver nada).
+    NanaZip (DISM) espera a que Windows Update sincronice: mientras busca, DISM se quedaba colgado.
+    Menu de dominios: se reserva el sitio antes de dibujar (con la pantalla llena salian lineas repetidas).
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -142,7 +147,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.7.2'
+$Script:Version       = '5.7.3'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -866,7 +871,7 @@ $Script:Apps = @(
     },
     [pscustomobject]@{
         # MSIX (Windows 10 2004+): aprovisionado para todos los usuarios; cada perfil lo recibe al iniciar sesion.
-        Name='NanaZip'; File='NanaZip_*.msixbundle'; Type='appx'; Lane='exe'; Order=40; Timeout=120
+        Name='NanaZip'; File='NanaZip_*.msixbundle'; Type='appx'; Lane='exe'; Order=40; Timeout=120; WaitWuSync=$true
         AppxName='40174MouriNaruto.NanaZip'
     }
 )
@@ -1509,6 +1514,23 @@ function Get-ReadyCheck {
         if ($others.Count -gt 0) { return 'wait' }
         if ($Office -and -not $Office.Done) { return 'wait' }
     }
+    # DISM (NanaZip) necesita el servicio de componentes de Windows, que Windows Update ocupa mientras sincroniza
+    # (lab: DISM colgado hasta el corte, dos veces). Espera a que termine de sincronizar, max. 15 min, avisando.
+    if ($app.WaitWuSync -and -not $DryRun -and $Script:WuProc -and -not $Script:WuProc.HasExited) {
+        $wp = try { "$(Get-Content -LiteralPath $Script:WuProgress -Raw -ErrorAction Stop)".Trim() } catch { '' }
+        if (-not $wp -or $wp -like 'sincronizando*') {
+            if (-not $Entry.WuWaitSince) {
+                $Entry.WuWaitSince = Get-Date; $Entry.WuWaitLog = Get-Date
+                Write-Log "[EXE] $($app.Name) espera a que Windows Update termine de sincronizar (si no, DISM se queda colgado)" 'INFO'
+            }
+            $mins = ((Get-Date) - $Entry.WuWaitSince).TotalMinutes
+            if ($mins -lt 15) {
+                if (((Get-Date) - $Entry.WuWaitLog).TotalSeconds -ge 60) { $Entry.WuWaitLog = Get-Date; Write-Log "[EXE] $($app.Name) sigue esperando a Windows Update ($([int]$mins) min)" 'INFO' }
+                $Entry.NotBefore = (Get-Date).AddSeconds(10)
+                return 'wait'
+            }
+        }
+    }
     if ((Get-Date) -lt $Entry.NotBefore) { return 'wait' }
     return 'ready'
 }
@@ -2010,16 +2032,18 @@ if (($Phase -in 'full','install','resume') -and -not $DryRun -and -not $NoLenovo
     }
 }
 
-# Windows Update en segundo plano: software ya (en paralelo a las apps); controladores al terminar apps y Lenovo.
+# Windows Update en segundo plano: solo controladores y firmware (BIOS). Ya solo sincroniza; al terminar apps y Lenovo
+# los busca, descarga e instala uno a uno. El resto (acumulativa, .NET, Defender...) lo pone Windows.
 $Script:WuProc = $null; $Script:WuResult = $null
-$Script:WuPs1    = Join-Path $Script:ScriptDir 'WindowsUpdate.ps1'
-$Script:WuJson   = Join-Path $Script:LogDir 'windows_update.json'
-$Script:WuSignal = Join-Path $Script:LogDir 'wu_continuar.flag'
+$Script:WuPs1      = Join-Path $Script:ScriptDir 'WindowsUpdate.ps1'
+$Script:WuJson     = Join-Path $Script:LogDir 'windows_update.json'
+$Script:WuSignal   = Join-Path $Script:LogDir 'wu_continuar.flag'
+$Script:WuProgress = Join-Path $Script:LogDir 'wu_progreso.txt'
 if (($Phase -in 'full','install','resume') -and -not $DryRun -and -not $NoWindowsUpdate -and (Test-Path $Script:WuPs1)) {
-    Remove-Item -LiteralPath $Script:WuJson, $Script:WuSignal -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $Script:WuJson, $Script:WuSignal, $Script:WuProgress -Force -ErrorAction SilentlyContinue
     $Script:WuProc = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -PassThru `
-        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Script:WuPs1)`" -WuMode run -OutJson `"$($Script:WuJson)`" -SignalFile `"$($Script:WuSignal)`""
-    Write-Log 'Windows Update en segundo plano: actualizaciones de software ya; controladores al terminar las apps y Lenovo' 'INFO'
+        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Script:WuPs1)`" -WuMode run -OutJson `"$($Script:WuJson)`" -SignalFile `"$($Script:WuSignal)`" -ProgressFile `"$($Script:WuProgress)`""
+    Write-Log 'Windows Update en segundo plano: solo controladores y firmware (sincroniza ya; los busca e instala al terminar las apps y Lenovo)' 'INFO'
 }
 
 $State = Get-State
@@ -2212,16 +2236,21 @@ if ($Script:LenovoProc) {
 # Windows Update: con apps y Lenovo terminados, via libre para sus controladores; se espera a que acabe (no se
 # reinicia con Windows instalando).
 if ($Script:WuProc) {
-    Write-Step 'WINDOWS UPDATE'
+    Write-Step 'WINDOWS UPDATE (controladores y firmware)'
     Set-Content -LiteralPath $Script:WuSignal -Value (Get-Date -Format 'o') -Encoding ASCII
-    if (-not $Script:WuProc.HasExited) {
-        Write-Log 'Esperando a Windows Update (actualizaciones y controladores; max. 45 min)...' 'INFO'
-        [void]$Script:WuProc.WaitForExit(2700000)
+    # Se ensena lo que hace (WindowsUpdate.ps1 deja una linea en wu_progreso.txt) y cada minuto que sigue vivo.
+    # Max. 20 min: si no, sigue en segundo plano y el vigilante reinicia cuando acabe.
+    $swWu = [Diagnostics.Stopwatch]::StartNew(); $wuTxt = ''; $wuBeat = 0
+    while (-not $Script:WuProc.HasExited -and $swWu.Elapsed.TotalMinutes -lt 20) {
+        $t = try { "$(Get-Content -LiteralPath $Script:WuProgress -Raw -ErrorAction Stop)".Trim() } catch { '' }
+        if ($t -and $t -ne $wuTxt) { Write-Log "[WU] $t" 'INFO'; $wuTxt = $t; $wuBeat = $swWu.Elapsed.TotalSeconds }
+        elseif ($swWu.Elapsed.TotalSeconds - $wuBeat -ge 60) { Write-Log "[WU] sigue: $(if ($wuTxt) { $wuTxt } else { 'buscando' }) ($(Format-Duration ([int]$swWu.Elapsed.TotalSeconds)))" 'INFO'; $wuBeat = $swWu.Elapsed.TotalSeconds }
+        [void]$Script:WuProc.WaitForExit(2000)
     }
     if (-not $Script:WuProc.HasExited) {
         $Script:WuRunning = $true
-        $Script:WuResult = [ordered]@{ found = 0; installed = @(); failed = @('no termino en 45 min: sigue en segundo plano (no apagues el equipo)'); skipped = @(); reboot = $false; notes = @() }
-        Write-Log 'Windows Update: no termino en 45 min, sigue en segundo plano' 'WARN'
+        $Script:WuResult = [ordered]@{ found = 0; installed = @(); failed = @('no termino en 20 min: sigue en segundo plano (no apagues el equipo)'); skipped = @(); reboot = $false; notes = @() }
+        Write-Log "Windows Update: no termino en 20 min ($wuTxt), sigue en segundo plano" 'WARN'
     } elseif (Test-Path -LiteralPath $Script:WuJson) {
         $Script:WuResult = Get-Content -LiteralPath $Script:WuJson -Raw | ConvertFrom-Json
         $wr = $Script:WuResult
