@@ -52,5 +52,8 @@ Lab/results/
 **/8_ESET_Endpoint.cmd
 **/nodedeploy_state.json
 
-# Dominios internos del menu del cierre (repo publico): solo en el M.2 y en el PC
+# Dominios internos del menu del cierre y ajustes del despacho (repo publico): solo en el M.2 y en el PC
 **/Dominios.txt
+**/Ajustes.local.txt
+# Zips de logs que deja el script si no hay red
+LOGS_preparation/

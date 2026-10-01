@@ -2,18 +2,25 @@
 
 ## M.2 / USB — flujo de 4 pasos
 
-1. Copia la **carpeta completa `nodedeploy\`** al M.2 (o úsalo directamente desde él).
-2. Conecta el M.2 al portátil Lenovo (Windows 10/11 x64, con su Microsoft 365 de fábrica).
+1. Copia la **carpeta completa `nodedeploy\`** del M.2 al **Escritorio** del portátil (más rápido que ejecutarlo desde el M.2; al terminar bien, se borra sola).
+2. Portátil Lenovo con Windows 10/11 x64 y su Microsoft 365 de fábrica, con red por cable y **cargador conectado** (sin él no se instala firmware/BIOS).
 3. **Doble clic `nodedeploy\Pincha_pa_instalar.bat`** (o `NodeDeploy_Run\PRO\Deploy.bat`). Acepta UAC y responde las preguntas del arranque:
    - **dominio**: menú numerado con las sedes de `NodeDeploy_Run\PRO\Dominios.txt` (no va a GitHub), `Otro` para escribirlo a mano o `0` = sin dominio; si hay dominio, usuario con permiso para unir equipos + contraseña;
    - **contraseña del Administrador local** (dos veces).
    
    Si relanzas el script en un equipo ya terminado, no vuelve a preguntar lo ya hecho (Administrador activado, equipo en dominio).
-4. Espera (~15-20 min; más si hay muchas actualizaciones de Lenovo o de Windows). Mientras instala, en segundo plano, **optimiza Windows** (quita apps de Store que sobran, publicidad, Bing, widgets), **actualiza controladores, firmware y BIOS de Lenovo** (como Commercial Vantage, sin abrirlo) e **instala las actualizaciones de Windows Update**. Al final deja sin arrancar con Windows PDFelement, PDF24, Everything, b4notify y Edge (AnyDesk siempre activo), ancla Outlook y Teams a la barra de tareas (sin Microsoft Store) y, si todas las apps quedan OK: Administrador local activado, la cuenta `usuario` (o `user`) fuera de Administradores y, lo último, unión al dominio. Si TODO quedó verificado (apps, validación, Administrador, cuenta estándar y paso del dominio: unido o `no`) y algo pide reiniciar (dominio, BIOS/firmware de Lenovo, instaladores), **reinicia solo a los 15 s** (`shutdown /a` lo cancela), siempre después del dominio; si un firmware de Lenovo pide apagar, apaga. Si no, el informe dice por qué.
+4. Espera (~15-20 min; más si hay muchas actualizaciones de Lenovo o de Windows). Mientras instala, en segundo plano, **optimiza Windows** (quita apps de Store que sobran, publicidad, Bing, widgets), **actualiza controladores, firmware y BIOS de Lenovo** (como Commercial Vantage, sin abrirlo) e **instala las actualizaciones de Windows Update**. Al final deja sin arrancar con Windows PDFelement, PDF24, Everything, b4notify y Edge (AnyDesk siempre activo), ancla Outlook y Teams a la barra de tareas (sin Microsoft Store) y, si todas las apps quedan OK: Administrador local activado, la cuenta `usuario` (o `user`) fuera de Administradores y, lo último, unión al dominio.
+5. **Reinicio**: si algo lo pide (dominio unido, Lenovo, Windows Update, instaladores), **reinicia solo a los 15 s** (`shutdown /a` lo cancela), siempre después del dominio; si un firmware de Lenovo pide apagar, apaga. Si las actualizaciones siguen instalándose, un **vigilante** reinicia en cuanto terminen. Una app con fallo no lo frena (sale en el informe); un dominio pedido y sin unir, sí.
 
-**Valida con**: `NodeDeploy_Run\POSTVALIDATE_REPORT.md` (estado + cronograma por app, duraciones en min y s) y `Validate_Report.md`.
+**Si una app falla**: se corta rápido (tiempo límite realista por app; si se cuelga no se reintenta) y se sigue con las demás. El informe dice en qué se quedó (procesos y ventanas) y las últimas líneas de su log.
 
-Al terminar (full / install / resume / validate) se abren `lusrmgr.msc` y `sysdm.cpl` para usuarios locales, nombre y dominio.
+**Informe**: `NodeDeploy_Run\POSTVALIDATE_REPORT.md`, corto: resultado en una línea, "Atención" solo si hay algo que hacer, tabla App / Estado / **Tiempo** (lo que pasa de 1 minuto, marcado) y el equipo en pocas líneas.
+
+**Logs**: al terminar, un zip con todo (informe, logs, equipo) se sube a la carpeta de red de `NodeDeploy_Run\PRO\Ajustes.local.txt` (fuera de git), en `NodeDeploy_Success` o `NodeDeploy_Errors`, con las credenciales del dominio. Sin red, queda en `LOGS_preparation\` al lado de la carpeta. Nunca frena nada.
+
+**Carpeta del escritorio**: si TODO quedó listo (apps, cierre, sin errores), se borra sola al terminar (~6 GB de instaladores; si las actualizaciones siguen, cuando terminen). Nunca el M.2 ni una carpeta fuera de un Escritorio. `-KeepFolder` la conserva.
+
+Solo se abren `lusrmgr.msc` / `sysdm.cpl` si hay algo de cuentas o dominio que revisar a mano.
 
 > El M.2 debe ser escribible: el script guarda estado y logs en `nodedeploy\NodeDeploy_Run\state\`.
 
@@ -34,6 +41,8 @@ Al terminar (full / install / resume / validate) se abren `lusrmgr.msc` y `sysdm
 | Sin optimización de Windows | `Deploy.bat full -NoOptimize` |
 | Sin actualizaciones de Lenovo / solo sin BIOS ni firmware | `Deploy.bat full -NoLenovoUpdates` / `-NoBIOS` |
 | Sin Windows Update | `Deploy.bat full -NoWindowsUpdate` |
+| Conservar la carpeta del escritorio al terminar | `Deploy.bat full -KeepFolder` |
+| Sin reinicio automático (pruebas) | `Deploy.bat full -NoAutoReboot` |
 | Portátil de Canarias / no tocar la hora | `Deploy.bat full -TimeZone "GMT Standard Time"` / `-TimeZone no` |
 | Repetir apps que fallaron | desinstalarlas y relanzar: el script salta lo ya instalado |
 | Sin paralelismo (diagnóstico) | `Deploy.bat full -Serial` |
@@ -62,13 +71,13 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
      └─ Windows Update (background, WindowsUpdate.ps1) ── software ya; drivers al final ───┘
 ```
 
-**Windows Update** (`WindowsUpdate.ps1`, el agente de Windows Update de Windows, sin módulos externos): lo mismo que "Descargar e instalar todo" de Configuración. Las de software (acumulativa, seguridad, .NET, herramienta de eliminación de software malintencionado, Defender) se descargan e instalan desde t=0, en paralelo a las apps; los controladores de Windows Update, al terminar las apps y Lenovo (así no se pisan con los de Lenovo); firmware solo con cargador. Nunca cambia de versión de Windows (actualizaciones de características) ni instala versiones preliminares. El reinicio que pidan entra en el reinicio automático del final. Resultado en el informe, sección "Windows Update".
+**Windows Update** (`WindowsUpdate.ps1`, el agente de Windows Update de Windows, sin módulos externos): lo mismo que "Descargar e instalar todo" de Configuración. Las de software (acumulativa, seguridad, .NET, herramienta de eliminación de software malintencionado, Defender) se descargan e instalan desde t=0, en paralelo a las apps; los controladores de Windows Update (también los opcionales), al terminar las apps y Lenovo (así no se pisan con los de Lenovo); firmware solo con cargador. La versión nueva de Windows solo si es un paquete de habilitación (p. ej. **26H2**, KB5121794: pequeño y un reinicio); un cambio de versión completo (horas) o una versión preliminar, nunca. El reinicio que pidan entra en el reinicio automático del final.
 
 **Actualizaciones Lenovo** (`Lenovo.ps1`, módulo oficial `Lenovo.Client.Update`, el mismo catálogo por modelo que Commercial Vantage): solo lo aplicable al equipo, desatendido y crítico/recomendado. Los controladores se instalan mientras van las apps; los de red (LAN/WiFi/WWAN), cuando terminan las apps (no cortan descargas); firmware y BIOS, lo último, **solo con el cargador conectado** y con BitLocker en pausa: se graban en el reinicio final. Nunca instala lo que reinicia al momento (p. ej. firmware de docks) ni reinicia por su cuenta. Resultado en el informe, sección "Actualizaciones Lenovo".
 
 - **Reintentos reales** (`-MaxRetries 2`): 1618 = Windows Installer ocupado (Windows Update, Lenovo Vantage, Store…) → espera y reintenta sin gastar intentos.
 - **Dependencias**: Autofirma tras Chrome (configura Chrome al instalarse), Work Desktop tras Agent Services + Outlook + Word, Cortex XDR siempre el último.
-- **Office**: los Lenovo traen Microsoft 365 (Word/Excel/PPT). Solo se añade **Outlook clásico**, lo primero en t=0 con el instalador oficial de Microsoft (`OutlookClassic.exe`); si falla, ODT (`OutlookRetail`, `Version=MatchInstalled`). `-OutlookMethod odt` invierte el orden. Office completo solo con `-InstallFullOffice`.
+- **Office**: los Lenovo traen Microsoft 365 (Word/Excel/PPT). Solo se añade **Outlook clásico**, lo primero en t=0 con ODT (`OutlookRetail`, `Version=MatchInstalled`): solo baja Outlook para la versión de Office que ya hay (**~3 min**). Plan B automático (si falla o pasa de 10 min): el instalador oficial de Microsoft (`OutlookClassic.exe`), que además actualiza todo el Office a la última versión (13-16 min). `-OutlookMethod bootstrap` invierte el orden. Office completo solo con `-InstallFullOffice`.
 - **Consola**: se desactiva QuickEdit al arrancar (un clic en la ventana ya no congela el despliegue).
 - **Defender**: exclusiones temporales solo para los procesos instaladores pesados y sus carpetas destino; se retiran al terminar (y al arrancar si un run anterior murió).
 
@@ -88,7 +97,7 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
 | Bit4id Middleware, Autofirma 1.9 | NSIS | EXE |
 | PDFelement Business 10.1.5 | Inno Setup (`/NOPAGE`, log propio) | EXE |
 | NanaZip 7.0 | MSIX con DISM, para todos los usuarios (licencia `.xml` junto al paquete) | EXE |
-| Outlook clásico | `OutlookClassic.exe` (plan B: ODT `OfficeSetup.exe`) | background, t=0 |
+| Outlook clásico | ODT `OfficeSetup.exe` con `MatchInstalled` (~3 min; plan B: `OutlookClassic.exe`) | background, t=0 |
 
 ---
 
@@ -157,4 +166,4 @@ nodedeploy\
 
 ---
 
-_Última actualización: 2026-09-28 — NodeDeploy PRO v5.5.3_
+_Última actualización: 2026-10-01 — NodeDeploy PRO v5.7.0_

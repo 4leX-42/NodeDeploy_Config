@@ -132,6 +132,24 @@ function Set-LabShareToRepo {
     Invoke-Vmrun -Arguments @('setSharedFolderState', $Config.VmxPath, $Config.SharedFolder, $Script:RepoRoot, 'readonly') -AllowFail | Out-Null
 }
 
+function Start-LabVm {
+    <#
+        Arranca la VM (sin ventana) con ajustes de rendimiento en el .vmx. Al revertir, el snapshot devuelve su
+        configuracion, asi que se aplican cada vez con la VM apagada: memoria sin fichero .vmem en disco (mucha menos
+        escritura en el disco del host), sin comparticion de paginas y la ISO de instalacion desconectada.
+    #>
+    param($Config)
+    if (Test-LabRunning $Config) { return }
+    $t = [IO.File]::ReadAllText($Config.VmxPath)
+    foreach ($kv in @(@('mainMem.useNamedFile', 'FALSE'), @('sched.mem.pshare.enable', 'FALSE'), @('sata0:0.startConnected', 'FALSE'))) {
+        $k = [regex]::Escape($kv[0])
+        if ($t -match "(?m)^$k\s*=") { $t = [regex]::Replace($t, "(?m)^$k\s*=.*$", "$($kv[0]) = `"$($kv[1])`"") }
+        else { $t = $t.TrimEnd() + "`r`n$($kv[0]) = `"$($kv[1])`"`r`n" }
+    }
+    [IO.File]::WriteAllText($Config.VmxPath, $t, [Text.Encoding]::ASCII)
+    Invoke-Vmrun -Arguments @('start', $Config.VmxPath, 'nogui') | Out-Null
+}
+
 function Get-LabSnapshots {
     param($Config)
     $r = Invoke-Vmrun -Arguments @('listSnapshots', $Config.VmxPath) -AllowFail

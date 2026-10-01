@@ -26,6 +26,20 @@ function Test-WuOnACPower {
     return $true
 }
 
+function Get-WuSkipReason {
+    # Sin efectos: por que NO se instala una actualizacion ($null = se instala). Las actualizaciones de version de
+    # Windows solo si son un paquete de habilitacion (p. ej. 26H2 sobre 24H2/25H2: pequeno, un reinicio); un cambio
+    # de version completo (GB, horas) no. Las versiones preliminares, nunca.
+    param([string]$Title, [string[]]$Categories, [double]$SizeBytes)
+    if ($Title -match '(?i)\bpreview\b|versi.n preliminar|vista previa') { return 'version preliminar' }
+    $feature = ($Categories -contains 'Upgrades') -or $Title -match '(?i)feature update|actualizaci.n de caracter.sticas|windows 11, versi.n \d\dH\d|windows 11, version \d\dH\d'
+    if ($feature) {
+        $enable = $Title -match '(?i)enablement|habilitaci.n' -or ($SizeBytes -gt 0 -and $SizeBytes -lt 200MB)
+        if (-not $enable) { return 'cambio de version completo de Windows (horas): no se instala en la preparacion' }
+    }
+    return $null
+}
+
 function Invoke-WuPhase {
     # Busca, descarga e instala un grupo de actualizaciones. Apunta resultado en $Res.
     # $Done: IDs ya instalados en esta ejecucion (hasta reiniciar Windows los sigue dando por no instalados).
@@ -37,8 +51,8 @@ function Invoke-WuPhase {
         $u = $sr.Updates.Item($i)
         if ($Done -and $Done.Contains("$($u.Identity.UpdateID)")) { continue }
         $cats = @(for ($c = 0; $c -lt $u.Categories.Count; $c++) { $u.Categories.Item($c).Name })
-        if ($cats -contains 'Upgrades' -or $u.Title -match '(?i)feature update|actualizaci.n de caracter.sticas') { $Res.skipped += "$($u.Title) (cambio de version de Windows)"; continue }
-        if ($u.Title -match '(?i)\bpreview\b|versi.n preliminar|vista previa') { $Res.skipped += "$($u.Title) (version preliminar)"; continue }
+        $skip = Get-WuSkipReason -Title $u.Title -Categories $cats -SizeBytes ([double]$u.MaxDownloadSize)
+        if ($skip) { if ($Res.skipped -notcontains "$($u.Title) ($skip)") { $Res.skipped += "$($u.Title) ($skip)" }; continue }
         if ($Drivers -and "$($u.DriverClass)" -match '(?i)firmware') {
             if (-not (Test-WuOnACPower)) { $Res.skipped += "$($u.Title) (firmware sin cargador: conectalo y relanza el script)"; continue }
             $firmware = $true
@@ -54,10 +68,10 @@ function Invoke-WuPhase {
             if ("$($bl.ProtectionStatus)" -eq 'On') { Suspend-BitLocker -MountPoint $env:SystemDrive -RebootCount 1 -ErrorAction Stop | Out-Null; $Res.notes += 'BitLocker en pausa hasta el siguiente reinicio (firmware de Windows Update)' }
         } catch { $Res.notes += "BitLocker: $($_.Exception.Message)" }
     }
-    # Descarga en prioridad baja (solo usa la red libre: no frena la descarga de Outlook ni la de Lenovo; en el
-    # laboratorio, en prioridad normal, Outlook paso de 16 a mas de 20 min)
+    # Descarga en prioridad normal. La baja no frenaba a Outlook, pero Windows la limita aunque la red este libre
+    # (lab: 31 min para la acumulativa); con Outlook por ODT (~3 min, poca descarga) ya no hace falta protegerlo.
     $dl = $Session.CreateUpdateDownloader(); $dl.Updates = $coll
-    try { $dl.Priority = 1 } catch {}
+    try { $dl.Priority = 2 } catch {}
     $swp = [Diagnostics.Stopwatch]::StartNew()
     try { [void]$dl.Download() } catch { $Res.notes += "${Label} descarga: $($_.Exception.Message)" }
     $tDl = [int]$swp.Elapsed.TotalSeconds
@@ -100,10 +114,12 @@ function Invoke-WindowsUpdate {
         $deadline = (Get-Date).AddMinutes(180)
         while (-not (Test-Path $SignalFile) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 5 }
     }
+    #    Controladores: tambien los opcionales (Windows Update solo ofrece los del hardware presente).
     if (-not $NoDrivers) {
-        Invoke-WuPhase -Session $session -Criteria "IsInstalled=0 and IsHidden=0 and Type='Driver' and BrowseOnly=0" -Label 'controladores' -Res $res -Drivers -Done $done
+        Invoke-WuPhase -Session $session -Criteria "IsInstalled=0 and IsHidden=0 and Type='Driver'" -Label 'controladores' -Res $res -Drivers -Done $done
     }
-    Invoke-WuPhase -Session $session -Criteria $soft -Label 'software (2a vuelta)' -Res $res -Done $done
+    #    Software de nuevo, incluido lo opcional: la version nueva de Windows si es un paquete de habilitacion (26H2)
+    Invoke-WuPhase -Session $session -Criteria "IsInstalled=0 and IsHidden=0 and Type='Software'" -Label 'software (2a vuelta)' -Res $res -Done $done
     try { if ((New-Object -ComObject Microsoft.Update.SystemInfo).RebootRequired) { $res.reboot = $true } } catch {}
     $res.seconds = [int]$sw.Elapsed.TotalSeconds
     return $res

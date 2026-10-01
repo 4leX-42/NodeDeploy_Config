@@ -63,6 +63,10 @@ compartida de la VM sigue a la copia desde la que se lanza la prueba. `lab.local
 - Primer inicio: `templates\lab-firstlogon.ps1` (log en `C:\lab_firstlogon.log` dentro de la VM).
 - La VM usa firmware BIOS (instalación sin "Press any key"), sin vTPM (no requiere cifrado), NAT, 4 vCPU / 4 GB.
 - Dentro de la VM el UAC está desactivado (solo laboratorio) para que `vmrun` tenga token de administrador completo.
-- Windows Update está pausado en la VM para que los tiempos sean comparables entre pruebas.
+- Windows Update está pausado en la VM (actualizaciones automáticas de Windows); NodeDeploy instala igualmente lo pendiente con su `WindowsUpdate.ps1`.
+- Arranque con `Start-LabVm` (LabCommon): aplica en el `.vmx`, con la VM apagada, memoria sin fichero `.vmem` en disco, sin compartición de páginas e ISO desconectada. Hay que aplicarlo cada vez: al revertir, el snapshot devuelve su configuración (y `vmrun` no crea un snapshot si el disco no cambió).
+- Pruebas de fallos: `Run-DeployBat.ps1 ... ENV:NODEDEPLOY_TEST_HANG=Everything:60` cambia el instalador de esa app por un proceso colgado (corte por tiempo, diagnóstico y que el resto siga). `Break-AnyDesk.ps1` / `Break-Clock.ps1` rompen AnyDesk y la hora; `Test-Cleanup.ps1` prueba el borrado de la carpeta del escritorio con carpetas de mentira (escritorio, fuera de `C:\Users`, vigilante con y sin fallos; cancela los reinicios con `shutdown /a`) y `Test-CleanupBat.ps1` el camino real (doble clic en `Pincha_pa_instalar.bat` desde el Escritorio); usan `Cleanup.ps1` / `RebootMonitor.ps1` de `C:\LabRun` si el host los copia (2 min, sin sincronizar el kit); `Probe-WU.ps1` lista lo pendiente en Windows Update; `Get-Reports.ps1` / `Get-Diag.ps1` traen informes y diagnóstico sin zip.
+- Las pruebas pasan `-NoAutoReboot` (que la VM no se reinicie sola) y la sincronización no copia `Ajustes.local.txt` (los logs del laboratorio no van a la carpeta de red real).
+- Si `Deploy.ps1` cambia la hora del invitado (salto de días), `vmrun` deja de esperar al programa: lanzar con `-NoWait` y esperar a una marca (`fileExistsInGuest`).
 - `guest\Extract-iManage3.ps1` / `guest\Extract-WDSetupIss.ps1`: sacan el `setup.iss` de un paquete iManage nuevo (si cambia la versión).
 - Borrar el laboratorio: apagar la VM y eliminar `Documentos\Virtual Machines\NodeDeploy-Lab` y `Lab\lab.local.json`.

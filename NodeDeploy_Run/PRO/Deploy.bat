@@ -17,6 +17,8 @@ REM     Deploy.bat full -Domain no           (responde "no" a la pregunta del do
 REM     Deploy.bat full -NoFinalize          (sin preguntas ni cierre: Administrador / usuario / dominio)
 REM     Deploy.bat full -TimeZone "GMT Standard Time"   (zona horaria; por defecto Madrid si no es de Espana; no = no tocar)
 REM     Deploy.bat full -NoWindowsUpdate     (sin Windows Update)   -NoLenovoUpdates / -NoBIOS (Lenovo)
+REM     Deploy.bat full -KeepFolder          (no borrar la carpeta del escritorio al terminar)
+REM     Deploy.bat full -NoAutoReboot        (sin reinicio automatico: laboratorio / pruebas)
 REM  Al arrancar pregunta dominio (o "no"), usuario del dominio y contrasena del Administrador local;
 REM  al final, solo si todo queda OK: Administrador activo, "usuario" fuera de Administradores y dominio.
 REM
@@ -156,24 +158,36 @@ echo   - logs\msi_*.log / is_*.log / burn_*.log / inno_*.log / odt_outlook\
 echo ============================================================
 echo.
 
-REM ---- Reinicio / apagado automatico. Deploy.ps1 deja la marca solo si TODO quedo verificado (apps, Administrador,
-REM      cuenta estandar fuera de Administradores y paso del dominio hecho: unido o "no") y algo pide reiniciar
-REM      (union al dominio, firmware/BIOS de Lenovo o instaladores). Ademas Validate tiene que salir bien.
+REM ---- Reinicio / apagado automatico. Deploy.ps1 deja la marca cuando algo pide reiniciar (dominio unido, Lenovo,
+REM      Windows Update, instaladores o Windows) y no hay nada en contra (dominio pedido sin unir o actualizaciones
+REM      aun instalandose; para eso queda el vigilante). Una app con fallo no lo frena: sale en el informe.
 REM      Linea 1 de la marca: reiniciar / apagar (algun firmware de Lenovo se graba al apagar). Linea 2: el motivo.
-if not exist "%STATE_DIR%\reinicio_automatico.flag" goto :NO_AUTO
-if not "!VRC!"=="0" goto :NO_AUTO
 set "AUTO_ACT="
 set "AUTO_WHY="
-set /p AUTO_ACT=<"%STATE_DIR%\reinicio_automatico.flag"
-for /f "usebackq skip=1 delims=" %%L in ("%STATE_DIR%\reinicio_automatico.flag") do if not defined AUTO_WHY set "AUTO_WHY=%%L"
-echo [OK] Todo verificado: apps, Administrador local, cuenta estandar y dominio.
+if exist "%STATE_DIR%\reinicio_automatico.flag" (
+    set /p AUTO_ACT=<"%STATE_DIR%\reinicio_automatico.flag"
+    for /f "usebackq skip=1 delims=" %%L in ("%STATE_DIR%\reinicio_automatico.flag") do if not defined AUTO_WHY set "AUTO_WHY=%%L"
+)
+REM ---- Carpeta pegada en el escritorio: Deploy.ps1 deja borrar_carpeta.flag solo si TODO quedo listo. La borra un
+REM      ayudante desde %TEMP% en cuanto este .bat termina, y el reinicio (si hay) lo hace el ayudante despues.
+if exist "%STATE_DIR%\borrar_carpeta.flag" goto :CLEANUP
+if not defined AUTO_ACT goto :NO_AUTO
 if /I "!AUTO_ACT!"=="apagar" goto :AUTO_OFF
 echo [STEP] Reinicio automatico en 15 s: !AUTO_WHY!. Para cancelarlo: shutdown /a
-shutdown /r /t 15 /c "NodeDeploy: todo verificado. Reinicio en 15 s: !AUTO_WHY!. Para cancelar: shutdown /a"
+shutdown /r /t 15 /c "NodeDeploy: reinicio en 15 s: !AUTO_WHY!. Para cancelar: shutdown /a"
 goto :END
 :AUTO_OFF
 echo [STEP] Apagado automatico en 15 s: !AUTO_WHY!. El firmware de Lenovo se graba al apagar; luego enciende el equipo.
-shutdown /s /t 15 /c "NodeDeploy: todo verificado. Apagado en 15 s para grabar el firmware de Lenovo: !AUTO_WHY!. Enciendelo despues. Para cancelar: shutdown /a"
+shutdown /s /t 15 /c "NodeDeploy: apagado en 15 s para grabar el firmware de Lenovo: !AUTO_WHY!. Enciendelo despues. Para cancelar: shutdown /a"
+goto :END
+:CLEANUP
+set "REPORT=%STATE_DIR%\..\POSTVALIDATE_REPORT.md"
+if exist "!REPORT!" start "" /D "%TEMP%" notepad.exe "!REPORT!"
+copy /y "%SCRIPT_DIR%\Cleanup.ps1" "%TEMP%\NodeDeploy_Cleanup.ps1" >nul
+echo [OK] Todo listo: esta carpeta de NodeDeploy se borra sola en unos segundos ^(los logs ya estan guardados^).
+if defined AUTO_ACT echo [STEP] Despues: !AUTO_ACT! automatico en 15 s: !AUTO_WHY!. Para cancelarlo: shutdown /a
+start "" /D "%TEMP%" powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%TEMP%\NodeDeploy_Cleanup.ps1" -FlagFile "%STATE_DIR%\borrar_carpeta.flag"
+cd /d "%TEMP%"
 goto :END
 :NO_AUTO
 
@@ -194,12 +208,30 @@ if /I "%PHASE%"=="validate" goto :LAUNCH_TOOLS
 goto :END
 
 :LAUNCH_TOOLS
+REM Deploy.ps1 deja en state\herramientas.txt solo lo que hay que revisar a mano (lusrmgr = cuentas, sysdm =
+REM dominio). Vacio = cierre comprobado: no se abre nada. Sin el fichero (p. ej. "validate"), se abren las dos.
+set "T_USR=1"
+set "T_SYS=1"
+if exist "%STATE_DIR%\herramientas.txt" (
+    set "T_USR=0"
+    set "T_SYS=0"
+    findstr /i /x "lusrmgr" "%STATE_DIR%\herramientas.txt" >nul 2>&1 && set "T_USR=1"
+    findstr /i /x "sysdm" "%STATE_DIR%\herramientas.txt" >nul 2>&1 && set "T_SYS=1"
+)
+if "!T_USR!!T_SYS!"=="00" (
+    echo [OK] Cierre comprobado: Administrador, cuenta estandar y dominio. No hace falta abrir nada.
+    goto :END
+)
 echo.
-echo [STEP] Abriendo herramientas de configuracion manual...
-echo   - Local Users and Groups  (lusrmgr.msc)
-echo   - System Properties       (sysdm.cpl)
-start "" lusrmgr.msc
-start "" sysdm.cpl
+echo [STEP] Abriendo lo que hay que revisar a mano...
+if "!T_USR!"=="1" (
+    echo   - Usuarios y grupos locales  ^(lusrmgr.msc^)
+    start "" lusrmgr.msc
+)
+if "!T_SYS!"=="1" (
+    echo   - Propiedades del sistema / dominio  ^(sysdm.cpl^)
+    start "" sysdm.cpl
+)
 
 :END
 if "!RC!"=="" set "RC=0"

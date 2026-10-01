@@ -15,7 +15,8 @@ New-Item -ItemType Directory -Force -Path 'C:\LabRun', $Target | Out-Null
 # Adobe tiene ...\Acrobat DC\PDFMaker\Office y sin ella msiexec daba 1603).
 $excludeDirs  = @('.git', '.claude', 'Lab', 'docs', '1.Node_Preparation\Office', 'NodeDeploy_Run\state') | ForEach-Object { Join-Path $share $_ }
 $avFiles      = @('eset_msi.msi', 'MDR_Windows_Andersen_8_2_x64.msi', 'epi_win_live_installer.exe', 'install_config.ini')
-$excludeFiles = $avFiles + @('*.log')
+# Ajustes.local.txt no: las pruebas no suben logs a la carpeta de red real del despacho (se quedan en la VM)
+$excludeFiles = $avFiles + @('*.log', 'Ajustes.local.txt')
 
 $sw = [Diagnostics.Stopwatch]::StartNew()
 # Sin /LOG: con /LOG robocopy abortaba con rc=16 sin escribir nada. Se captura la salida.

@@ -1,0 +1,6 @@
+# Plantilla de Ajustes.local.txt (el real NO va a git: el repo es publico). Copialo como Ajustes.local.txt junto
+# a los scripts. Una clave por linea: Clave = valor
+# LogShare: carpeta de red donde se sube el zip de logs de cada ejecucion, en NodeDeploy_Success o NodeDeploy_Errors
+# (se usan las credenciales del dominio que se meten al arrancar). Sin red, el zip queda en LOGS_preparation, al
+# lado de la carpeta de NodeDeploy.
+LogShare = \\servidor\recurso\carpeta

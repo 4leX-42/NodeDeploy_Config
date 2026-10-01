@@ -23,7 +23,7 @@
 | 2 | **Espera al mutex `_MSIExecute`** + reintento de 1618 sin gastar intentos | En el primer arranque de un Lenovo, Windows Update / Vantage / Store ocupan Windows Installer: los MSI devolvían 1618 de golpe (varias apps fallaban a la vez). |
 | 3 | **Carriles en paralelo**: MSI serializado + EXE (NSIS/Inno) a la vez | Antes todo en serie salvo el grupo 2. |
 | 4 | **Solo iManage Work Desktop espera a Outlook** | Antes todo el grupo iManage esperaba a Office. |
-| 5 | **Outlook clásico primero (t=0)** con el instalador oficial `OutlookClassic.exe`; plan B ODT (`OutlookRetail`, `Version=MatchInstalled`) | En el primer Lenovo real ODT falló tras ~2 min en silencio y retrasó Outlook. `-OutlookMethod odt` invierte el orden. Office completo solo con `-InstallFullOffice`. |
+| 5 | **Outlook clásico primero (t=0)**: desde v5.7 ODT (`OutlookRetail`, `Version=MatchInstalled`, ~3 min); plan B el instalador oficial `OutlookClassic.exe` | El de Microsoft actualiza todo el Office de fábrica (13-16 min en campo); ODT solo añade Outlook. En el primer Lenovo real (v5.0) ODT falló tras ~2 min: si falla, entra el plan B solo. Office completo solo con `-InstallFullOffice`. |
 | 6 | Ya no se matan `OfficeClickToRun`/`OfficeC2RClient`/`setup` antes de Work Desktop | Podía romper un Outlook que aún se estaba integrando. |
 | 7 | **Chrome Enterprise MSI offline** | El stub `ChromeSetup.exe` descargaba ~110 MB en el momento (lento y dependiente de la red). |
 | 8 | **PDFelement con `/NOPAGE`** + log Inno + sin redirección de stdout | Wondershare indica `/NOPAGE` como obligatorio en silencioso. La redirección de v4 podía dejar el script esperando a procesos hijos. |
@@ -50,7 +50,7 @@
 | Estado del equipo | Acción |
 |---|---|
 | Word + Outlook clásico presentes | Nada. |
-| Word presente, Outlook ausente (**Lenovo de fábrica**) | En t=0 `OutlookClassic.exe` (instalador oficial "classic Outlook", añade el producto C2R `OutlookRetail`). Si falla → ODT `OutlookRetail` con la **misma versión, canal e idiomas** del Office instalado. `-OutlookMethod odt` para probar ODT primero. |
+| Word presente, Outlook ausente (**Lenovo de fábrica**) | En t=0 ODT `OutlookRetail` con la **misma versión, canal e idiomas** del Office instalado (`MatchInstalled`): solo baja Outlook (lab: 3 min). Si falla o pasa de 10 min → `OutlookClassic.exe` (instalador oficial "classic Outlook"), que funciona siempre pero actualiza **todo** el Office de fábrica a la última versión (3-4 GB: 13-16 min en campo). `-OutlookMethod bootstrap` para probar primero el de Microsoft. |
 | Word ausente | Error claro: el equipo no trae Office. Work Desktop queda bloqueado. Para instalar Microsoft 365 completo: `-InstallFullOffice` (usa `1.Node_Preparation\configuration.xml` y el payload local `Office\Data`). |
 
 XML generado (ejemplo real en un equipo con Microsoft 365 for business, Current Channel):
@@ -99,7 +99,8 @@ Al final, **solo si ninguna app quedó en fallo** (si no, se pospone y se hace a
 | 1 | Activa el Administrador integrado (SID `-500`, "Administrador") con esa contraseña | |
 | 2 | Saca la cuenta estándar del grupo Administradores (SID `S-1-5-32-544`): `usuario`, `Usuario`, `user` o `User` (todas las que existan) | Solo si el paso 1 fue bien: nunca deja el equipo sin administrador local. |
 | 3 | Une el equipo al dominio | Lo último. Pide reinicio (exit 3). Si ya estaba en ese dominio, no hace nada. |
-| 4 | **Reinicio automático** (15 s de aviso; `shutdown /a` lo cancela) | Lo último, después del paso del dominio. Solo si quedó TODO verificado (todas las apps `ok`, validación final sin fallos, Administrador activo, cuenta estándar fuera de Administradores, paso del dominio hecho: unido, ya estaba o `no`, y Lenovo sin fallos) **y algo pide reiniciar**: unión al dominio, firmware/BIOS de Lenovo, un instalador o Windows. Si un firmware de Lenovo pide apagar, apaga (`shutdown /s`). Si falta algo, no reinicia y el informe dice por qué; si nada lo pide, "no hace falta". |
+| 4 | **Reinicio automático** (15 s de aviso; `shutdown /a` lo cancela) | Lo último, después del paso del dominio, **siempre que algo lo pida**: unión al dominio, Lenovo, Windows Update, un instalador o Windows. Solo dos cosas lo frenan: un dominio pedido que no quedó unido (el dominio va antes del reinicio) o actualizaciones aún instalándose (entonces un **vigilante**, `RebootMonitor.ps1` desde `C:\ProgramData\NodeDeploy`, espera a que terminen sin cortarlas, máx. 4 h, y reinicia con 60 s de aviso si lo piden ellas o lo que ya pedía reinicio al terminar, p. ej. el dominio; antes borra la carpeta del escritorio si toca; registro en `vigilante.log`). Una app con fallo no lo frena: sale en "Atención". Si un firmware de Lenovo pide apagar, apaga (`shutdown /s`). `-NoAutoReboot` lo desactiva (pruebas). |
+| 5 | Herramientas manuales | Solo se abren `lusrmgr.msc` (si falló algo de cuentas) o `sysdm.cpl` (si el dominio no quedó hecho). Con todo comprobado, no se abre nada. |
 
 Las contraseñas solo están en memoria: no van a log, state ni informe. El resultado sale en la sección **Cierre del equipo** del informe. Probado en la VM (`Lab\guest\Test-Finalize.ps1`); nunca en el PC del técnico.
 
@@ -135,10 +136,26 @@ Proceso aparte desde t=0 con el agente de Windows Update (API COM `Microsoft.Upd
 | Qué | Cuándo |
 |---|---|
 | Software: acumulativa, seguridad, .NET, herramienta de eliminación de software malintencionado, Defender (`Type='Software' and BrowseOnly=0`) | desde t=0, en paralelo a las apps |
-| Controladores de Windows Update (`Type='Driver' and BrowseOnly=0`) | al terminar las apps y Lenovo (después de los de Lenovo, para no pisarse); firmware solo con cargador y BitLocker en pausa |
-| Actualizaciones de características (cambio de versión de Windows) y versiones preliminares | nunca |
+| Controladores de Windows Update, también los opcionales (`Type='Driver'`) | al terminar las apps y Lenovo (después de los de Lenovo, para no pisarse); firmware solo con cargador y BitLocker en pausa |
+| Segunda vuelta de software (incluido lo opcional): lo encadenado (p. ej. plataforma de Defender) y la **versión nueva de Windows si es paquete de habilitación** (26H2 sobre 24H2/25H2, KB5121794: pequeño, un reinicio) | al terminar las apps y Lenovo |
+| Cambio de versión completo (GB, horas) y versiones preliminares | nunca (`Get-WuSkipReason`) |
 
-Si Windows está instalando otra cosa (`WU_E_INSTALL_NOT_ALLOWED`), espera y reintenta. No reinicia: si hace falta, entra en el reinicio automático del final (después del dominio). Deploy.ps1 espera a que termine (máx. 45 min); con fallos o sin terminar, no hay reinicio automático. Sección **Windows Update** del informe. `-NoWindowsUpdate` lo omite.
+Descarga en prioridad normal (la baja no frenaba a Outlook, pero Windows la limita aunque la red esté libre: 31 min para la acumulativa en el lab; con Outlook por ODT ya no hace falta). Si Windows está instalando otra cosa (`WU_E_INSTALL_NOT_ALLOWED`), espera y reintenta. No reinicia: si hace falta, entra en el reinicio automático del final (después del dominio). Deploy.ps1 espera a que termine (máx. 45 min); si sigue, lo recoge el vigilante. Tiempos de descarga e instalación por fase en el informe. `-NoWindowsUpdate` lo omite.
+
+## Fallos: rápido y se sigue (v5.7)
+
+| Caso | Qué hace |
+|---|---|
+| Se cuelga (pasa su tiempo límite) | Se corta, **no se reintenta** (se colgaría igual: en campo PDFelement perdió 3 × 15 min) y se sigue con las demás. "Atención" dice en qué procesos y ventanas se quedó y las últimas líneas de su log. |
+| Falla con un código de error | 1 reintento a los 10 s (por si era algo pasajero); si vuelve a fallar, se apunta y se sigue. |
+| Windows Installer ocupado (1618) | Espera y reintenta sin gastar intentos (como siempre). |
+
+Tiempos límite por app de 3-5 veces su máximo visto (Outlook, 20 min: depende de la descarga). `-MaxRetries` (por defecto 1) para los fallos con código. Prueba de laboratorio: `NODEDEPLOY_TEST_HANG="App:segundos"` cambia el instalador de esa app por un proceso colgado.
+
+## Logs y carpeta del escritorio (v5.7)
+
+- **Logs**: al terminar, zip `fecha_EQUIPO_numerodeserie.zip` (informe, `Deploy_*.log`, logs de instaladores, resultados de Lenovo y Windows Update, estado, `equipo.txt`) a `LogShare` de `Ajustes.local.txt` (fuera de git: el repo es público; plantilla `Ajustes.ejemplo.txt`), en `NodeDeploy_Success` o `NodeDeploy_Errors` (con errores = app con fallo, Lenovo / Windows Update con fallo, error en el cierre o AnyDesk sin ID). Usa las credenciales del dominio del arranque; antes comprueba el puerto 445 (3 s). Sin red o sin acceso: `LOGS_preparation\` al lado de la carpeta de NodeDeploy. Nunca frena nada ni cuenta como fallo.
+- **Carpeta del escritorio**: si TODO quedó listo (sin errores, Administrador, cuenta estándar y dominio hechos) y la carpeta está en un Escritorio, `Deploy.bat` lanza `Cleanup.ps1` desde `%TEMP%` y la borra (~6 GB); si había reinicio, lo hace después. Si las actualizaciones siguen instalándose (usan la carpeta), la borra el vigilante cuando terminen, solo si no fallan (si fallan, se queda con sus logs). Lo que siga en uso se borra en el siguiente arranque (tarea de SYSTEM). Nunca el M.2 ni una carpeta fuera de `C:\Users\...` en disco fijo. `-KeepFolder` la conserva. Registro: `C:\ProgramData\NodeDeploy\limpieza.log` (y `vigilante.log`).
 
 ## Hora del equipo (v5.5.1, al arrancar)
 
@@ -169,7 +186,7 @@ Los parámetros extra se pasan tal cual a `Deploy.ps1` (`Deploy.bat full -SkipAV
 | `-SkipAV` | No instala ESET Management Agent ni Cortex XDR (laboratorio). |
 | `-SkipApps A,B` | Excluye apps por nombre. |
 | `-InstallFullOffice` | Si falta Word, instala Microsoft 365 completo. |
-| `-OutlookMethod bootstrap\|odt` | Método principal para Outlook clásico (default `bootstrap`; el otro queda de plan B). |
+| `-OutlookMethod odt\|bootstrap` | Método principal para Outlook clásico (default `odt` desde v5.7: ~3 min; el otro queda de plan B). |
 | `-NoOffice` | No toca Office. |
 | `-SequentialOffice` | Espera a Outlook antes de empezar el resto (diagnóstico). |
 | `-Serial` | Un solo carril, todo en serie (diagnóstico). También `NODEDEPLOY_SERIAL=1`. |
@@ -183,6 +200,8 @@ Los parámetros extra se pasan tal cual a `Deploy.ps1` (`Deploy.bat full -SkipAV
 | `-NoOptimize` | Sin optimización de Windows (`Optimize.ps1`: limpieza de apps, publicidad, arranque, barra de tareas, TRIM). |
 | `-NoLenovoUpdates` | Sin actualizaciones de Lenovo (`Lenovo.ps1`). |
 | `-NoWindowsUpdate` | Sin actualizaciones de Windows Update (`WindowsUpdate.ps1`). |
+| `-NoAutoReboot` | Sin reinicio automático ni vigilante (laboratorio / pruebas). |
+| `-KeepFolder` | No borra la carpeta del escritorio al terminar. |
 | `-NoBIOS` | Actualizaciones de Lenovo sin firmware ni BIOS. |
 | `-TimeZone id` / `-TimeZone no` | Zona horaria (por defecto `Romance Standard Time`, Madrid, solo si la del equipo no es de España; Canarias = `GMT Standard Time`). `no` = no tocar la hora. |
 

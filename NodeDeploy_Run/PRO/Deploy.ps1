@@ -18,8 +18,9 @@
       * Reintentos reales (-MaxRetries ya se aplica). 1618 = MSI ocupado -> espera y reintenta.
       * Dependencias explicitas (Autofirma tras Chrome, WD tras Agent Services + Outlook,
         Cortex XDR siempre el ultimo).
-      * Outlook clasico en t=0 con el instalador oficial de Microsoft (OutlookClassic.exe); ODT
-        (producto OutlookRetail, Version=MatchInstalled) como plan B (-OutlookMethod odt lo invierte).
+      * Outlook clasico en t=0. Desde v5.7 primero ODT (producto OutlookRetail, Version=MatchInstalled: solo
+        Outlook, ~3 min) y de plan B el instalador oficial de Microsoft (OutlookClassic.exe, que actualiza todo
+        Office: 13-16 min). -OutlookMethod bootstrap lo invierte.
         Office completo solo con -InstallFullOffice (1.Node_Preparation\configuration.xml).
       * iManage 3.0 (Drive 10.13.0.416, Work Desktop 10.10.2.62, Drive Native 10.6.1.15).
         Drive y Work Desktop son InstallShield InstallScript: /s con el setup.iss junto al exe.
@@ -74,6 +75,14 @@
     v5.6.0: Windows Update (WindowsUpdate.ps1, agente de Windows Update) en segundo plano desde t=0: software
     (acumulativa, seguridad, .NET...) en paralelo a las apps; controladores al terminar apps y Lenovo. Nunca cambio
     de version de Windows. El reinicio entra en el automatico del final. -NoWindowsUpdate lo omite.
+    v5.7.0: fallos rapidos (tiempos limite reales por app; colgado = no se reintenta, se apunta en que se quedo
+    y se sigue; error rapido = 1 reintento). Reinicio cuando algo lo pide aunque falle una app (nunca antes del
+    dominio pedido); vigilante (RebootMonitor.ps1) si las actualizaciones siguen al terminar: reinicia por ellas
+    o por lo que ya lo pedia (dominio...) y antes borra la carpeta del escritorio si toca. -NoAutoReboot.
+    Windows Update: tambien controladores opcionales y la version nueva si es paquete de habilitacion (26H2).
+    Informe corto (tiempos marcados > 1 min). Logs en zip a la carpeta de red (Ajustes.local.txt; NodeDeploy_Success /
+    NodeDeploy_Errors) o al lado de la carpeta. La carpeta pegada en un Escritorio se borra sola si todo quedo listo
+    (Cleanup.ps1; -KeepFolder la conserva). Solo se abren lusrmgr / sysdm si hay algo que revisar.
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -92,7 +101,7 @@ param(
     [ValidateSet('full','probe','install','validate','resume','cleanup')]
     [string]$Phase = 'full',
     [string[]]$SkipApps = @(),
-    [int]$MaxRetries = 2,
+    [int]$MaxRetries = 1,
     [switch]$NonInteractive = $true,
     [switch]$NoOffice,
     [switch]$ForceReinstall,
@@ -103,7 +112,7 @@ param(
     [switch]$Serial,
     [switch]$DryRun,
     [ValidateSet('bootstrap','odt')]
-    [string]$OutlookMethod = 'bootstrap',
+    [string]$OutlookMethod = 'odt',
     # Cierre del equipo (Finalize.ps1): se pregunta al arrancar y se aplica al final si todo queda OK.
     [string]$Domain,                     # nombre del dominio o 'no' (si se omite, se pregunta)
     [string[]]$StandardUser = @('usuario', 'user'),   # cuenta(s) que salen de Administradores (da igual mayusculas)
@@ -112,7 +121,9 @@ param(
     [switch]$NoLenovoUpdates,            # sin actualizaciones de Lenovo (Lenovo.ps1)
     [switch]$NoBIOS,                     # actualizaciones de Lenovo sin firmware/BIOS
     [string]$TimeZone = 'Romance Standard Time',  # zona horaria si la del equipo no es de Espana; 'no' = no tocar la hora
-    [switch]$NoWindowsUpdate             # sin actualizaciones de Windows Update (WindowsUpdate.ps1)
+    [switch]$NoWindowsUpdate,            # sin actualizaciones de Windows Update (WindowsUpdate.ps1)
+    [switch]$NoAutoReboot,               # sin reinicio automatico ni vigilante (laboratorio / pruebas)
+    [switch]$KeepFolder                  # no borrar la carpeta del escritorio al terminar
 )
 
 # ============================================================
@@ -125,7 +136,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.6.0'
+$Script:Version       = '5.7.0'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -160,9 +171,12 @@ $Script:StatePath = (Convert-Path $StatePath)
 $Script:LogDir    = Join-Path $Script:StatePath 'logs'
 $Script:ReportDir = Join-Path $Script:StatePath 'reports'
 $Script:StateFile = Join-Path $Script:StatePath 'nodedeploy_state.json'
-# Marca para Deploy.bat: reiniciar solo si en ESTA pasada quedo todo verificado (se borra al empezar).
+# Marcas para Deploy.bat (reinicio, borrar la carpeta, herramientas a abrir): solo valen las de ESTA pasada.
 $Script:AutoRebootFlag = Join-Path $Script:StatePath 'reinicio_automatico.flag'
-Remove-Item -LiteralPath $Script:AutoRebootFlag -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $Script:AutoRebootFlag, (Join-Path $Script:StatePath 'borrar_carpeta.flag'), (Join-Path $Script:StatePath 'herramientas.txt') -Force -ErrorAction SilentlyContinue
+# La del vigilante (borrado diferido hasta que acaben las actualizaciones) tampoco vale de una pasada anterior
+$Script:MonitorDir = Join-Path $env:ProgramData 'NodeDeploy'; $Script:MonitorStarted = $false
+Remove-Item -LiteralPath (Join-Path $Script:MonitorDir 'borrar_carpeta.flag') -Force -ErrorAction SilentlyContinue
 $Script:LogFile   = Join-Path $Script:LogDir ('Deploy_{0}.log' -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
 
 if ($PSVersionTable.PSVersion.Major -lt 5) {
@@ -267,6 +281,90 @@ function Set-ClockAndTimeZone {
         & w32tm.exe /resync /nowait 2>&1 | Out-Null
     } catch { $out += "W32Time: $($_.Exception.Message)" }
     return ($out -join '; ')
+}
+
+function Get-LocalSetting {
+    # Ajustes del despacho en Ajustes.local.txt junto a los scripts ("Clave = valor"; fuera de git: el repo es publico).
+    param([string]$Key)
+    $f = Join-Path $Script:ScriptDir 'Ajustes.local.txt'
+    if (-not (Test-Path -LiteralPath $f)) { return $null }
+    foreach ($l in @(Get-Content -LiteralPath $f -Encoding UTF8 -ErrorAction SilentlyContinue)) {
+        if ($l -notmatch '^\s*#' -and $l -match ('^\s*' + [regex]::Escape($Key) + '\s*=\s*(.+?)\s*$')) { return $matches[1] }
+    }
+    return $null
+}
+
+function Test-TcpPort {
+    # Comprobacion rapida (3 s) antes de tocar una carpeta de red: si el servidor no responde, no se espera al SMB.
+    param([string]$HostName, [int]$Port = 445, [int]$TimeoutMs = 3000)
+    $c = New-Object Net.Sockets.TcpClient
+    try { return [bool]($c.ConnectAsync($HostName, $Port).Wait($TimeoutMs) -and $c.Connected) } catch { return $false } finally { $c.Dispose() }
+}
+
+function Save-RunLogs {
+    # Zip con los logs de esta ejecucion (informe, Deploy_*.log, logs de instaladores, resultados de Lenovo y Windows
+    # Update, estado y datos del equipo) a la carpeta de red LogShare (Ajustes.local.txt), en NodeDeploy_Success o
+    # NodeDeploy_Errors, con las credenciales del dominio si se dieron. Sin red o si falla: en LOGS_preparation, al
+    # lado de la carpeta de NodeDeploy. No es critico: nunca para nada ni cuenta como fallo.
+    param([bool]$HasErrors, $Credential, [string]$ReportFile, [string]$Summary)
+    $sub  = if ($HasErrors) { 'NodeDeploy_Errors' } else { 'NodeDeploy_Success' }
+    $note = $null
+    try {
+        $bios = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue
+        $cs   = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+        $os   = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+        $name = '{0}_{1}_{2}' -f (Get-Date -Format 'yyyy-MM-dd_HHmm'), $env:COMPUTERNAME, ("$($bios.SerialNumber)" -replace '[^\w-]', '')
+        $tmp  = Join-Path $env:TEMP "NodeDeploy_$name"
+        New-Item -ItemType Directory -Force -Path (Join-Path $tmp 'logs') | Out-Null
+        if ($ReportFile -and (Test-Path -LiteralPath $ReportFile)) { Copy-Item -LiteralPath $ReportFile -Destination $tmp -Force }
+        $since = $Script:StartTime.AddMinutes(-2)
+        Get-ChildItem -LiteralPath $Script:LogDir -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -ge $since } | ForEach-Object {
+            try { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $tmp 'logs') -Force -ErrorAction Stop } catch {}
+        }
+        $st = Join-Path $Script:StatePath 'nodedeploy_state.json'
+        if (Test-Path -LiteralPath $st) { Copy-Item -LiteralPath $st -Destination $tmp -Force }
+        @("Equipo   : $env:COMPUTERNAME | $($cs.Manufacturer) $($cs.SystemFamily) $($cs.Model) | n/s $($bios.SerialNumber) | BIOS $($bios.SMBIOSBIOSVersion)",
+          "Windows  : $($os.Caption) $($os.Version) build $([Environment]::OSVersion.Version.Build).$((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue).UBR)",
+          "NodeDeploy $($Script:Version) | fase $Phase | inicio $($Script:StartTime.ToString('yyyy-MM-dd HH:mm')) | $(Format-Duration (Get-Elapsed))",
+          "Resultado: $Summary") | Set-Content -LiteralPath (Join-Path $tmp 'equipo.txt') -Encoding UTF8
+        $zip = Join-Path $env:TEMP "$name.zip"
+        Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $zip -Force -ErrorAction Stop
+        $dest  = $null
+        $share = Get-LocalSetting 'LogShare'
+        if ($share -and $share -match '^\\\\([^\\]+)\\') {
+            if (Test-TcpPort -HostName $matches[1]) {
+                try {
+                    $base = $share
+                    if ($Credential) { New-PSDrive -Name NDLOGS -PSProvider FileSystem -Root $share -Credential $Credential -ErrorAction Stop | Out-Null; $base = 'NDLOGS:\' }
+                    $target = Join-Path $base $sub
+                    if (-not (Test-Path -LiteralPath $target)) { New-Item -ItemType Directory -Force -Path $target -ErrorAction Stop | Out-Null }
+                    Copy-Item -LiteralPath $zip -Destination $target -Force -ErrorAction Stop
+                    $dest = Join-Path (Join-Path $share $sub) "$name.zip"
+                } catch { $note = "carpeta de red: $($_.Exception.Message)" }
+                finally { Remove-PSDrive -Name NDLOGS -Force -ErrorAction SilentlyContinue }
+            } else { $note = "sin acceso a $($matches[1])" }
+        }
+        if (-not $dest) {
+            $root  = Split-Path -Parent (Split-Path -Parent $Script:ScriptDir)
+            $local = Join-Path (Split-Path -Parent $root) "LOGS_preparation\$sub"
+            New-Item -ItemType Directory -Force -Path $local | Out-Null
+            Copy-Item -LiteralPath $zip -Destination $local -Force
+            $dest = Join-Path $local "$name.zip"
+        }
+        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+        return "$dest$(if ($note) { " ($note)" })"
+    } catch { return "no se pudieron guardar: $($_.Exception.Message)" }
+}
+
+function Test-CleanupAllowed {
+    # La carpeta que se pega en el escritorio (scripts + ~6 GB de instaladores) se borra sola al final, pero solo si
+    # TODO quedo listo y solo si de verdad esta en un Escritorio: nunca el M.2 ni la copia maestra del PC.
+    param([string]$Root, [bool]$AllDone)
+    if (-not $AllDone -or -not $Root -or -not (Test-Path -LiteralPath (Join-Path $Root 'NodeDeploy_Run\PRO\Deploy.ps1'))) { return $false }
+    $desks = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('CommonDesktopDirectory')) +
+             @(Get-ChildItem -Path 'C:\Users\*\Desktop', 'C:\Users\*\OneDrive*\Desktop' -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+    return [bool](@($desks | Where-Object { $_ -and $Root.StartsWith($_.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) }).Count)
 }
 
 function Disable-ConsoleQuickEdit {
@@ -630,74 +728,74 @@ $Script:Apps = @(
     [pscustomobject]@{
         # Cliente propio: un solo ejecutable (AnyDesk-<id>_msi.exe) + servicio AnyDesk-<id>_msi; tarda ~7 s.
         # Al terminar las apps, Test-AnyDeskHealth comprueba que quede entero y con ID (repara si no).
-        Name='AnyDesk'; File='AnyDesk.msi'; Type='msi'; Lane='msi'; Order=10; Timeout=300
+        Name='AnyDesk'; File='AnyDesk.msi'; Type='msi'; Lane='msi'; Order=10; Timeout=120
         Detect=@('AnyDesk'); ServiceNames=@('AnyDesk*')
         FilePaths=@("${env:ProgramFiles(x86)}\AnyDesk*\AnyDesk*.exe","$env:ProgramFiles\AnyDesk*\AnyDesk*.exe")
     },
     [pscustomobject]@{
-        Name='AqNet'; File='AqNetInstalacion.msi'; Type='msi'; Lane='msi'; Order=20; Timeout=300
+        Name='AqNet'; File='AqNetInstalacion.msi'; Type='msi'; Lane='msi'; Order=20; Timeout=180
         Detect=@('AqNet','Aqnet','Deposito Digital')
     },
     [pscustomobject]@{
-        Name='Nebula CertAgent'; File='nebula-certAgent-winx64-5.0.0.msi'; Type='msi'; Lane='msi'; Order=30; Timeout=300
+        Name='Nebula CertAgent'; File='nebula-certAgent-winx64-5.0.0.msi'; Type='msi'; Lane='msi'; Order=30; Timeout=180
         Detect=@('Nebula','CertAgent','nebulaCERTagent'); ServiceNames=@('nebulaCERTagent','nebulaCERT')
         FilePaths=@("$env:ProgramFiles\Vintegris\nebulaCERTagent\nebulaCERTagent.exe")
     },
     [pscustomobject]@{
-        Name='ESET Management Agent'; File='eset_msi.msi'; Type='msi-eset'; Lane='msi'; Order=40; Timeout=600
+        Name='ESET Management Agent'; File='eset_msi.msi'; Type='msi-eset'; Lane='msi'; Order=40; Timeout=240
         Detect=@('ESET Management Agent','ESET Remote Administrator Agent'); ServiceNames=@('EraAgentSvc')
         FilePaths=@("$env:ProgramFiles\ESET\RemoteAdministrator\Agent\ERAAgent.exe")
     },
     [pscustomobject]@{
         # Enterprise MSI offline (~160 MB): sin descarga en el momento, exit codes MSI fiables.
-        Name='Google Chrome'; File='GoogleChromeStandaloneEnterprise64.msi'; Type='msi'; Lane='msi'; Order=50; Timeout=600
+        Name='Google Chrome'; File='GoogleChromeStandaloneEnterprise64.msi'; Type='msi'; Lane='msi'; Order=50; Timeout=300
         Detect=@('Google Chrome')
         FilePaths=@("$env:ProgramFiles\Google\Chrome\Application\chrome.exe","${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe")
         Fallback=[pscustomobject]@{ File='ChromeSetup.exe'; Type='exe'; Lane='exe'; Args='/silent /install' }
     },
     [pscustomobject]@{
         # CloseOffice: con Outlook abierto el instalador pregunta Si/No (integra complemento de Outlook).
-        Name='MitelConnect'; File='MitelConnect.exe'; Type='installshield'; Lane='msi'; Order=60; Timeout=900
+        Name='MitelConnect'; File='MitelConnect.exe'; Type='installshield'; Lane='msi'; Order=60; Timeout=360
         MsiExtra='REBOOT=ReallySuppress'; CloseOffice=$true
         Detect=@('Mitel Connect','Mitel','MiCollab')
         FilePaths=@("$env:ProgramFiles\Mitel\Connect Client\ConnectAgent.exe","${env:ProgramFiles(x86)}\Mitel\Connect Client\ConnectAgent.exe")
         Boost=@{ Paths=@("${env:ProgramFiles(x86)}\Mitel","$env:ProgramFiles\Mitel") }
     },
     [pscustomobject]@{
-        Name='iManage Agent Services'; Path="$imWork\iManageAgentServices.exe"; Type='installshield'; Lane='msi'; Order=70; Timeout=600
+        Name='iManage Agent Services'; Path="$imWork\iManageAgentServices.exe"; Type='installshield'; Lane='msi'; Order=70; Timeout=240
         MsiExtra='REBOOT=ReallySuppress'
         Detect=@('iManage Agent Services','iManage Agent','iManageAgent')
     },
     [pscustomobject]@{
         # 10.13 ya NO es WiX Burn (10.10 lo era): es InstallShield InstallScript puro y /quiet
         # abria la GUI. Silencioso = "setup.exe /s" + setup.iss (el que trae el paquete, junto al exe).
-        Name='iManage Drive'; Path="$imDrive\iManageDriveSetup.exe"; Type='installshield-imanage'; Lane='msi'; Order=80; Timeout=900
+        Name='iManage Drive'; Path="$imDrive\iManageDriveSetup.exe"; Type='installshield-imanage'; Lane='msi'; Order=80; Timeout=480
         Detect=@('iManage Drive'); ExcludeDetect=@('Native')
         FilePaths=@("$env:ProgramFiles\iManage\iManage Drive\iManageDrive.exe")
         Boost=@{ Processes=@('iManageDriveSetup.exe','ISBEW64.exe'); Paths=@("$env:ProgramFiles\iManage") }
     },
     [pscustomobject]@{
-        Name='iManage Drive Native'; Path="$imNative\iManageDriveNative.exe"; Type='burn'; Lane='msi'; Order=90; Timeout=600
+        Name='iManage Drive Native'; Path="$imNative\iManageDriveNative.exe"; Type='burn'; Lane='msi'; Order=90; Timeout=180
         Requires=@('iManage Drive')
         Detect=@('iManage Drive Native','iManageDriveNative')
     },
     [pscustomobject]@{
         # InstallScript puro. Prerequisitos HARD (log iManage): Agent Services + Office con Word y Outlook.
-        Name='iManage Work Desktop'; Path="$imWork\iManageWorkDesktopforWindowsx64.exe"; Type='installshield-imanage'; Lane='msi'; Order=100; Timeout=1200
+        Name='iManage Work Desktop'; Path="$imWork\iManageWorkDesktopforWindowsx64.exe"; Type='installshield-imanage'; Lane='msi'; Order=100; Timeout=480
         Requires=@('iManage Agent Services','@office'); RequiresOffice=$true
         Detect=@('iManage Work Desktop','iManage Work')
         Boost=@{ Processes=@('iManageWorkDesktopforWindowsx64.exe','ISBEW64.exe'); Paths=@("$env:ProgramFiles\iManage","${env:ProgramFiles(x86)}\iManage") }
     },
     [pscustomobject]@{
         # WiX, por equipo. LAUNCHAPPONEXIT=0: que no abra dnGrep al terminar.
-        Name='dnGrep'; File='dnGREP.*.x64.msi'; Type='msi'; Lane='msi'; Order=110; Timeout=600
+        Name='dnGrep'; File='dnGREP.*.x64.msi'; Type='msi'; Lane='msi'; Order=110; Timeout=240
         MsiExtra='LAUNCHAPPONEXIT=0'
         Detect=@('dnGrep'); FilePaths=@("$env:ProgramFiles\dnGREP\dnGREP.exe")
     },
     [pscustomobject]@{
         # Propiedades documentadas por voidtools (EVERYTHING_SERVICE, START_ON_STARTUP, *_SHORTCUT...) valen 1
         # por defecto: servicio + arranque con Windows + accesos directos. 1.4.1.1031+ arranca el servicio en /qn.
-        Name='Everything'; File='Everything-*.x64.msi'; Type='msi'; Lane='msi'; Order=120; Timeout=300
+        Name='Everything'; File='Everything-*.x64.msi'; Type='msi'; Lane='msi'; Order=120; Timeout=120
         Detect=@('Everything'); ServiceNames=@('Everything'); FilePaths=@("$env:ProgramFiles\Everything\Everything.exe")
     },
     [pscustomobject]@{
@@ -707,7 +805,7 @@ $Script:Apps = @(
         # todo en local, sin conversor online, enlaces a las herramientas web, fax ni correo de PDF24; sin JavaScript
         # en su lector; WebView2 del sistema (lo parchea Microsoft) en vez de la copia fija que trae PDF24.
         # Escritorio: el MSI pone PDF24 Toolbox y PDF24 Launcher; se quita el Launcher (anuncia redes sociales).
-        Name='PDF24 Creator'; File='pdf24-creator-*-x64.msi'; Type='msi'; Lane='msi'; Order=130; Timeout=900
+        Name='PDF24 Creator'; File='pdf24-creator-*-x64.msi'; Type='msi'; Lane='msi'; Order=130; Timeout=360
         MsiExtra='AUTOUPDATE=No REGISTERREADER=No FAXPRINTER=No'
         Detect=@('PDF24 Creator','PDF24'); FilePaths=@("$env:ProgramFiles\PDF24\pdf24.exe")
         Boost=@{ Paths=@("$env:ProgramFiles\PDF24") }
@@ -720,7 +818,7 @@ $Script:Apps = @(
         # al instalar (lab: 86 s frente a 111 s). Si falta, paquete empresarial (setup.exe = MSI base + parche .msp).
         # En Reader aparece como "Adobe Acrobat (64-bit)". EULA_ACCEPT=YES (sin licencia al abrir), ENABLE_CHROMEEXT=0
         # (sin extension de Chrome), LEAVE_PDFOWNERSHIP=YES (no quita los PDF a PDFelement). Actualizador activo (seguridad).
-        Name='Adobe Acrobat Reader'; File='AdobeReader_x64_*_AIP\AcroPro.msi'; Type='msi'; Lane='msi'; Order=140; Timeout=1200
+        Name='Adobe Acrobat Reader'; File='AdobeReader_x64_*_AIP\AcroPro.msi'; Type='msi'; Lane='msi'; Order=140; Timeout=600
         MsiExtra='EULA_ACCEPT=YES ENABLE_CHROMEEXT=0 LEAVE_PDFOWNERSHIP=YES'
         Detect=@('Adobe Acrobat'); FilePaths=@("$env:ProgramFiles\Adobe\Acrobat DC\Acrobat\Acrobat.exe")
         Boost=@{ Paths=@(@("$env:ProgramFiles\Adobe", "${env:ProgramFiles(x86)}\Common Files\Adobe") +
@@ -729,14 +827,14 @@ $Script:Apps = @(
     },
     [pscustomobject]@{
         # Siempre el ultimo: su monitor de comportamiento bloquea el runtime InstallScript de iManage.
-        Name='MDR Cortex XDR'; File='MDR_Windows_Andersen_8_2_x64.msi'; Type='msi'; Lane='msi'; Order=999; Timeout=900
+        Name='MDR Cortex XDR'; File='MDR_Windows_Andersen_8_2_x64.msi'; Type='msi'; Lane='msi'; Order=999; Timeout=480
         AfterAll=$true; MsiExtra='REBOOT=ReallySuppress'
         Detect=@('Cortex XDR','Palo Alto','Traps'); ServiceNames=@('cyserver','CyveraService')
     },
 
     # ---------- Carril EXE (sin Windows Installer, en paralelo al carril MSI) ----------
     [pscustomobject]@{
-        Name='Bit4id Middleware'; File='Bit4id_Middleware.exe'; Type='exe'; Lane='exe'; Order=10; Timeout=300
+        Name='Bit4id Middleware'; File='Bit4id_Middleware.exe'; Type='exe'; Lane='exe'; Order=10; Timeout=180
         Args='/S'
         Detect=@('Bit4id','Universal Middleware')
         FilePaths=@("$env:ProgramFiles\Bit4id\Universal MW\bin\bit4xpki.exe","${env:ProgramFiles(x86)}\Bit4id\Universal MW\bin\bit4xpki.exe")
@@ -745,7 +843,7 @@ $Script:Apps = @(
     [pscustomobject]@{
         # Inno Setup 571 MB. /NOPAGE es obligatorio en silencioso segun la guia de despliegue de
         # Wondershare (sin el, el instalador espera en la pagina final). /LOG deja traza propia.
-        Name='PDFelement Business'; File=$pdfExe; Type='inno'; Lane='exe'; Order=20; Timeout=900
+        Name='PDFelement Business'; File=$pdfExe; Type='inno'; Lane='exe'; Order=20; Timeout=480
         Args='/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOPAGE /NOCANCEL /CLOSEAPPLICATIONS'
         Detect=@('PDFelement','Wondershare PDFelement')
         FilePaths=@("$env:ProgramFiles\Wondershare\PDFelement\PDFelement.exe","${env:ProgramFiles(x86)}\Wondershare\PDFelement\PDFelement.exe")
@@ -754,7 +852,7 @@ $Script:Apps = @(
     },
     [pscustomobject]@{
         # Configura Chrome (y Firefox) al instalarse -> debe ir DESPUES de Chrome.
-        Name='Autofirma'; File='Autofirma_64_v1_9_installer.exe'; Type='exe'; Lane='exe'; Order=30; Timeout=300
+        Name='Autofirma'; File='Autofirma_64_v1_9_installer.exe'; Type='exe'; Lane='exe'; Order=30; Timeout=180
         Args='/S'; After=@('Google Chrome')
         Detect=@('Autofirma','AutoFirma')
         FilePaths=@("$env:ProgramFiles\Autofirma\Autofirma\Autofirma.exe","$env:ProgramFiles\AutoFirma\AutoFirma.exe")
@@ -762,7 +860,7 @@ $Script:Apps = @(
     },
     [pscustomobject]@{
         # MSIX (Windows 10 2004+): aprovisionado para todos los usuarios; cada perfil lo recibe al iniciar sesion.
-        Name='NanaZip'; File='NanaZip_*.msixbundle'; Type='appx'; Lane='exe'; Order=40; Timeout=300
+        Name='NanaZip'; File='NanaZip_*.msixbundle'; Type='appx'; Lane='exe'; Order=40; Timeout=180
         AppxName='40174MouriNaruto.NanaZip'
     }
 )
@@ -815,29 +913,29 @@ function Resolve-AppDefinition {
 
 function Get-AutoRebootDecision {
     # Reinicio / apagado automatico del final (sin efectos: solo decide). Action = reiniciar | apagar | $null.
-    # Why = lo que falta para poder reiniciar solo; Need = lo que pide reiniciar. Solo hay Action si no falta nada
-    # (apps OK, Administrador activo, cuenta estandar fuera de Administradores, paso del dominio hecho: unido, ya
-    # estaba o "no"; Lenovo sin fallos) y algo pide reiniciar. Si Lenovo pide apagar (algun firmware), se apaga.
-    param($Records, [string[]]$MissingApps, $FinalizeStatus, $LenovoResult, [bool]$WindowsPending, $WuResult)
+    # Need = lo que pide reiniciar (dominio unido, Lenovo, Windows Update, instaladores, Windows).
+    # Why = lo que lo impide, solo dos cosas: actualizaciones aun instalandose (lo recoge el vigilante) o un dominio
+    #       pedido que aun no esta unido (el dominio va siempre antes del reinicio).
+    # Warn = avisos que NO frenan el reinicio (app con fallo, cierre pospuesto): se apuntan en el informe.
+    param($Records, $FinalizeStatus, [bool]$DomainWanted, $LenovoResult, $WuResult, [bool]$WindowsPending, [bool]$UpdatesRunning)
     $fs = $FinalizeStatus
-    $notOk = @($Records | Where-Object { $_.status -notin 'ok', 'ok_reboot' } | ForEach-Object { "$($_.name)=$($_.status)" })
-    $why = @()
-    if ($notOk)       { $why += "apps no OK: $($notOk -join ', ')" }
-    if (@($MissingApps | Where-Object { $_ }).Count) { $why += "sin resultado: $(@($MissingApps) -join ', ')" }
-    if (-not ($fs -and $fs.AdminOk))    { $why += 'Administrador local sin activar' }
-    if (-not ($fs -and $fs.UserOk))     { $why += 'cuenta estandar sin quitar de Administradores' }
-    if (-not ($fs -and $fs.DomainDone)) { $why += 'falta el paso del dominio (la union no se completo)' }
-    if ($LenovoResult -and @($LenovoResult.failed).Count) { $why += 'actualizaciones de Lenovo con fallos' }
-    if ($WuResult -and @($WuResult.failed).Count)         { $why += 'Windows Update con fallos o sin terminar' }
     $lnPend = @(if ($LenovoResult) { $LenovoResult.pending })
     $need = @()
     if ($fs -and $fs.DomainJoined)          { $need += 'union al dominio' }
-    if ($lnPend -match 'REBOOT|SHUTDOWN')   { $need += 'firmware/BIOS de Lenovo' }
-    if (@($Records | Where-Object { $_.status -eq 'ok_reboot' }).Count) { $need += 'instaladores' }
+    if ($lnPend -match 'REBOOT|SHUTDOWN')   { $need += 'actualizaciones de Lenovo' }
     if ($WuResult -and $WuResult.reboot)    { $need += 'Windows Update' }
-    elseif ($WindowsPending)                { $need += 'Windows lo pide' }
+    if (@($Records | Where-Object { $_.status -eq 'ok_reboot' }).Count) { $need += 'instaladores' }
+    if ($WindowsPending -and -not ($WuResult -and $WuResult.reboot)) { $need += 'Windows lo pide' }
+    $why = @()
+    if ($UpdatesRunning) { $why += 'actualizaciones aun instalandose' }
+    if ($DomainWanted -and -not ($fs -and $fs.DomainDone)) { $why += 'falta unir al dominio (va antes del reinicio)' }
+    $warn = @()
+    $bad = @($Records | Where-Object { $_.status -like 'fail*' -or $_.status -eq 'blocked' } | ForEach-Object { $_.name })
+    if ($bad) { $warn += "apps con fallo: $($bad -join ', ')" }
+    if ($LenovoResult -and @($LenovoResult.failed).Count -and -not $UpdatesRunning) { $warn += 'Lenovo con fallos' }
+    if ($WuResult -and @($WuResult.failed).Count -and -not $UpdatesRunning)         { $warn += 'Windows Update con fallos' }
     $act = if ($why.Count -or -not $need.Count) { $null } elseif ($lnPend -contains 'SHUTDOWN') { 'apagar' } else { 'reiniciar' }
-    return [pscustomobject]@{ Action = $act; Need = $need; Why = $why }
+    return [pscustomobject]@{ Action = $act; Need = $need; Why = $why; Warn = $warn }
 }
 
 function Set-AppPolicies {
@@ -1044,10 +1142,38 @@ function Get-JobExitCode {
     try { return $Job.Process.ExitCode } catch { return -98 }
 }
 
+function Get-ProcessTreeText {
+    # Procesos del instalador (raiz + hijos) con el titulo de su ventana: dice en que se quedo colgado.
+    param([int]$RootId)
+    $all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Select-Object ProcessId, ParentProcessId)
+    $ids = New-Object System.Collections.Generic.List[int]; $ids.Add($RootId)
+    for ($i = 0; $i -lt $ids.Count; $i++) {
+        foreach ($c in @($all | Where-Object { $_.ParentProcessId -eq $ids[$i] })) { if (-not $ids.Contains([int]$c.ProcessId)) { $ids.Add([int]$c.ProcessId) } }
+    }
+    $out = foreach ($id in $ids) {
+        $p = Get-Process -Id $id -ErrorAction SilentlyContinue
+        if ($p) { "$($p.ProcessName)$(if ($p.MainWindowTitle) { " [ventana: $($p.MainWindowTitle)]" })" }
+    }
+    return (@($out) -join ', ')
+}
+
+function Get-LogTail {
+    # Lineas utiles del log del instalador para el informe: en MSI, lo anterior al primer "Return value 3"; si no, el final.
+    param([string]$Path, [int]$Lines = 6)
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return @() }
+    try {
+        $all = [string[]]@(Get-Content -LiteralPath $Path -ErrorAction Stop)
+        $i = [array]::FindIndex($all, [Predicate[string]]{ param($l) $l -match 'Return value 3' })
+        $sel = if ($i -ge 0) { $all[[Math]::Max(0, $i - $Lines)..$i] } else { $all | Select-Object -Last $Lines }
+        return @($sel | ForEach-Object { $s = "$_".Trim(); if ($s.Length -gt 200) { $s.Substring(0, 200) + '...' } else { $s } } | Where-Object { $_ })
+    } catch { return @() }
+}
+
 function Stop-JobTree {
     param($Job)
     if ($DryRun -or -not $Job.Process) { return }
-    Write-Log "TIMEOUT $($Job.App.Name) ($($Job.Timeout)s) - matando PID $($Job.Process.Id) y sus hijos" 'WARN'
+    $Job.HangInfo = Get-ProcessTreeText -RootId $Job.Process.Id
+    Write-Log "TIMEOUT $($Job.App.Name) ($($Job.Timeout)s) - colgado en: $($Job.HangInfo). Se corta y se sigue con las demas" 'WARN'
     Stop-ProcessTree -ProcessId $Job.Process.Id
     Stop-ProcessSafe -Names $Job.App.KillOnTimeout -WaitSec 1
 }
@@ -1177,10 +1303,10 @@ function Start-OfficeStep {
 
 function Start-OutlookInstall {
     <#
-        bootstrap (defecto): instalador oficial de Microsoft "classic Outlook" (OutlookClassic.exe).
-                  Ha funcionado en todos los Lenovo reales; arranca en t=0 y se ve progresar.
-        odt     : ODT con OutlookRetail + Version=MatchInstalled (sin UI). En el primer Lenovo real
-                  fallo tras ~2 min en silencio y retraso Outlook -> queda como plan B.
+        odt (defecto desde v5.7): ODT con OutlookRetail + Version=MatchInstalled: solo anade Outlook a la version de
+                  Office que ya trae el portatil (lab: 3 min). Maximo 10 min; si falla o se pasa, plan B.
+        bootstrap: instalador oficial de Microsoft "classic Outlook" (OutlookClassic.exe). Funciona siempre, pero
+                  actualiza TODO el Office de fabrica a la ultima version (3-4 GB del CDN: 13-16 min en campo).
         Si el metodo elegido falla o no esta disponible, se prueba el otro.
     #>
     param($Step, $State, [string]$Method)
@@ -1220,7 +1346,8 @@ function Start-OfficeProcess {
     $Step.Record.attempts++
     $Step.Record.args_used = $Display
     $Step.Job = New-Job -App $Step.App -FilePath $FilePath -Arguments $Arguments -Display $Display -Attempt $Step.Record.attempts
-    $Step.Job.Timeout = if ($Step.Mode -eq 'bootstrap') { 1200 } else { [int]$Step.App.Timeout }
+    # ODT solo baja lo de Outlook: 10 min y, si no, plan B (bootstrap, que baja todo Office: 20 min)
+    $Step.Job.Timeout = if ($Step.Mode -eq 'bootstrap') { 1200 } else { 600 }
     Set-AppRecord $State $Step.App.Name $Step.Record
 }
 
@@ -1386,6 +1513,13 @@ function Start-AppJob {
     }
 
     $cmd = New-InstallCommand -App $app -State $State
+    # Solo laboratorio: NODEDEPLOY_TEST_HANG="App:segundos" cambia el instalador de esa app por un proceso que se
+    # queda colgado (prueba del corte por tiempo, el diagnostico y que el resto siga).
+    if ($env:NODEDEPLOY_TEST_HANG -and -not $DryRun -and $env:NODEDEPLOY_TEST_HANG.Split(':')[0] -eq $app.Name) {
+        $app = $app.PSObject.Copy(); $app.Timeout = [int]$env:NODEDEPLOY_TEST_HANG.Split(':')[1]
+        $cmd.FilePath = Join-Path $PSHOME 'powershell.exe'; $cmd.Arguments = '-NoProfile -Command "Start-Sleep -Seconds 3600"'
+        Write-Log "PRUEBA: $($app.Name) se sustituye por un proceso colgado (timeout $($app.Timeout) s)" 'WARN'
+    }
     $display = if ($cmd.FilePath -eq $Script:MsiExec) { "msiexec.exe $($cmd.Arguments)" } else { "`"$($cmd.FilePath)`" $($cmd.Arguments)" }
     $rec.args_used   = Protect-Secret $display
     $rec.install_log = $cmd.LogFile
@@ -1405,17 +1539,19 @@ function Start-AppJob {
 }
 
 function Get-RetryDelay {
-    # $null = no reintentar. 1618 (MSI ocupado) no consume presupuesto de reintentos.
+    # $null = no reintentar: se apunta el fallo y se sigue con las demas. 1618 (MSI ocupado) espera y no gasta
+    # intentos. Colgado (timeout): no se reintenta, se colgaria igual (en campo: 3 x 15 min perdidos). Fallo rapido
+    # (codigo de error): un reintento corto, por si era algo pasajero.
     param([int]$ExitCode, [bool]$TimedOut, $Entry)
     if ($ExitCode -eq 1618) {
         $Entry.BusyRetries++
         if ($Entry.BusyRetries -le 20) { $Entry.Attempt--; return 15 }
         return $null
     }
+    if ($TimedOut) { return $null }
     if ($ExitCode -in 1601,1602,1619,1620,1633,1638,-99) { return $null }  # config/paquete/cancelado: reintentar no ayuda
     if ($Entry.Attempt -gt $MaxRetries) { return $null }
-    if ($TimedOut) { return 5 }
-    return @(10, 30, 60)[[Math]::Min($Entry.Attempt - 1, 2)]
+    return 10
 }
 
 function Get-IManageSetupErrors {
@@ -1503,7 +1639,7 @@ function Complete-AppJob {
         return $null
     }
 
-    $reason = if ($Job.Error) { $Job.Error } elseif ($TimedOut) { "timeout:$($Job.Timeout)s" } elseif ($code -eq 1618) { 'msi_busy:1618' } else { "exit_code:$code($hex)" }
+    $reason = if ($Job.Error) { $Job.Error } elseif ($TimedOut) { "colgado: sin terminar en $(Format-Duration $Job.Timeout)$(if ($Job.HangInfo) { " (procesos: $($Job.HangInfo))" })" } elseif ($code -eq 1618) { 'msi_busy:1618' } else { "exit_code:$code($hex)" }
     $rec.errors += $reason
     if ($app.Type -eq 'installshield-imanage' -and -not $DryRun) {
         foreach ($m in (Get-IManageSetupErrors -Since $Job.StartedAt -Tag ($app.Name -replace '\s','') -WorkDir $Job.WorkDir)) {
@@ -1519,8 +1655,9 @@ function Complete-AppJob {
     }
     $rec.status = if ($TimedOut) { 'fail_timeout' } else { 'fail' }
     $rec.finished = (Get-Date -Format 'o')
+    $rec | Add-Member -NotePropertyName log_tail -NotePropertyValue @(Get-LogTail -Path $Job.LogFile) -Force
     Set-AppRecord $State $app.Name $rec
-    Write-Log "[$tag] FAIL $($app.Name) - $reason tras $($rec.attempts) intento(s). Log: $($Job.LogFile)" 'ERROR'
+    Write-Log "[$tag] FAIL $($app.Name) - $reason tras $($rec.attempts) intento(s). Se sigue con las demas. Log: $($Job.LogFile)" 'ERROR'
     return $null
 }
 
@@ -1628,111 +1765,138 @@ function Get-AllRecords {
     return @($State.apps.PSObject.Properties | Where-Object { $names -contains $_.Name } | ForEach-Object { $_.Value })
 }
 
+function Get-ReportIcon {
+    # Iconos del informe (se generan aqui para que este .ps1 siga siendo ASCII: PowerShell 5.1 sin BOM).
+    param([string]$Name)
+    $cp = @{ ok = 0x2705; fail = 0x274C; warn = 0x26A0; skip = 0x23ED; stop = 0x26D4; time = 0x23F1; reboot = 0x1F504; pause = 0x23F8 }[$Name]
+    if (-not $cp) { return '' }
+    return [char]::ConvertFromUtf32($cp)
+}
+
 function Write-FinalReport {
+    # Informe corto y al grano: resultado en una linea, "Atencion" solo si hay algo que hacer, tabla App / Estado /
+    # Tiempo (lo que pasa de 1 minuto, en negrita y marcado) y el equipo en pocas lineas. El detalle tecnico
+    # (comandos, evidencias, intentos, codigos) esta en el log y en el zip de logs.
     param($State)
     $reportFile = Join-Path (Split-Path -Parent $Script:StatePath) 'POSTVALIDATE_REPORT.md'
-    $apps  = Get-AllRecords $State
-    $ok    = @($apps | Where-Object { $_.status -in $Script:OkStatus }).Count
-    $fail  = @($apps | Where-Object { $_.status -like 'fail*' -or $_.status -eq 'blocked' }).Count
-    $skip  = @($apps | Where-Object { $_.status -eq 'skipped_by_user' }).Count
+    $iOk = Get-ReportIcon ok; $iFail = Get-ReportIcon fail; $iWarn = Get-ReportIcon warn; $iSkip = Get-ReportIcon skip
+    $iStop = Get-ReportIcon stop; $iTime = Get-ReportIcon time; $iReb = Get-ReportIcon reboot; $iPause = Get-ReportIcon pause
+    $apps  = @(Get-AllRecords $State)
     $total = @($Script:Apps).Count
-    $dur   = Get-Elapsed
+    $okN   = @($apps | Where-Object { $_.status -in $Script:OkStatus }).Count
+    $bad   = @($apps | Where-Object { $_.status -like 'fail*' -or $_.status -eq 'blocked' })
+    $skipN = @($apps | Where-Object { $_.status -eq 'skipped_by_user' }).Count
+    $fmtT  = { param([int]$s) $t = Format-Duration $s; if ($s -gt 60) { "**$t** $iWarn" } else { $t } }
 
     $sb = New-Object Text.StringBuilder
-    [void]$sb.AppendLine("# POSTVALIDATE REPORT - NodeDeploy PRO v$($Script:Version)$(if ($DryRun) { ' (DRY-RUN: no se instalo nada)' })")
-    [void]$sb.AppendLine('')
-    [void]$sb.AppendLine("- **Equipo:** $env:COMPUTERNAME")
-    [void]$sb.AppendLine("- **Session:** $($Script:SessionId)")
-    [void]$sb.AppendLine("- **Inicio:** $($Script:StartTime.ToString('yyyy-MM-dd HH:mm:ss'))")
-    [void]$sb.AppendLine("- **Duracion total:** $(Format-Duration $dur) ($dur s)")
-    [void]$sb.AppendLine("- **Modo:** $(if ($Serial) { 'serie' } else { 'carriles MSI + EXE en paralelo, Outlook en background' }) | reintentos max $MaxRetries")
-    [void]$sb.AppendLine("- **Reboot requerido:** $($State.reboot_required)")
-    if ($Script:ClockResult) { [void]$sb.AppendLine("- **Hora:** $($Script:ClockResult)") }
-    [void]$sb.AppendLine("- **Log:** $($Script:LogFile)")
-    [void]$sb.AppendLine('')
-    [void]$sb.AppendLine('## Resumen')
-    [void]$sb.AppendLine('')
-    [void]$sb.AppendLine('| Metrica | Valor |')
-    [void]$sb.AppendLine('|---|---|')
-    [void]$sb.AppendLine("| Total apps | $total |")
-    [void]$sb.AppendLine("| OK | $ok |")
-    [void]$sb.AppendLine("| FAIL / BLOCKED | $fail |")
-    [void]$sb.AppendLine("| Skipped (usuario) | $skip |")
-    [void]$sb.AppendLine('')
-    if ($Script:FinalizeResult) {
-        [void]$sb.AppendLine('## Cierre del equipo')
-        [void]$sb.AppendLine('')
-        foreach ($k in $Script:FinalizeResult.Keys) { [void]$sb.AppendLine("- **${k}:** $($Script:FinalizeResult[$k])") }
-        [void]$sb.AppendLine('')
+    $add = { param([string]$l = '') [void]$sb.AppendLine($l) }
+    & $add "# NodeDeploy $($Script:Version) - $env:COMPUTERNAME - $($Script:StartTime.ToString('dd/MM/yyyy HH:mm'))$(if ($DryRun) { ' (simulacion: no se instalo nada)' })"
+    & $add
+    $appsTxt = if ($bad.Count) { "$iFail **$okN/$total apps OK** - $($bad.Count) con fallo: $(($bad | ForEach-Object { $_.name }) -join ', ')" } else { "$iOk **$okN/$total apps OK**$(if ($skipN) { " ($skipN saltadas)" })" }
+    $rb = if ($Script:FinalizeResult) { "$($Script:FinalizeResult['Reinicio automatico'])" } else { '' }
+    $rbTxt = switch -Regex ($rb) {
+        '^si: (\w+) en 15 s \(([^)]*)\)' { "$iReb se va a $($matches[1]) en 15 s ($($matches[2]))"; break }
+        '^pendiente'                     { "$iReb reinicia solo al terminar las actualizaciones (no lo apagues)"; break }
+        '^no hace falta'                 { 'sin reinicio: no hace falta'; break }
+        '^desactivado'                   { 'sin reinicio automatico (-NoAutoReboot)'; break }
+        '^no: (.+?)( \| aviso.*)?$'      { "$iPause sin reinicio: $($matches[1])"; break }
+        default                          { if ($State.reboot_required) { "$iReb hace falta reiniciar" } else { '' } }
     }
+    & $add "$appsTxt  |  $iTime **$(Format-Duration (Get-Elapsed))**$(if ($rbTxt) { "  |  $rbTxt" })"
+    & $add
+
+    # Atencion: solo lo que hay que mirar o hacer
+    $att = New-Object System.Collections.Generic.List[string]
+    foreach ($a in $bad) {
+        $why = "$(@($a.errors | Where-Object { $_ }) | Select-Object -Last 1)"
+        if ($why -match '^exit_code:(-?\d+)') {
+            $msg = @{ '1603' = 'fallo grave del instalador'; '1625' = 'bloqueado por directiva'; '1632' = 'carpeta temporal inaccesible'
+                      '1641' = 'reinicio iniciado'; '1638' = 'ya hay otra version instalada'; '1619' = 'no se pudo abrir el paquete' }[$matches[1]]
+            $why = "error $($matches[1])$(if ($msg) { " ($msg)" })"
+        }
+        $logName = if ($a.install_log) { ' - log `' + (Split-Path $a.install_log -Leaf) + '`' } else { '' }
+        $att.Add("- $iFail **$($a.name)**: $why$logName")
+        foreach ($l in @($a.log_tail | Where-Object { $_ } | Select-Object -Last 4)) { $att.Add("    $l") }
+        if ("$($a.exit_code)" -eq '-2147213312') { $att.Add('    0x80042000 = iManage no ve un prerrequisito (Office con Word y Outlook, o Agent Services): `Diag-iManageWD.ps1`') }
+    }
+    if ($Script:FinalizeResult) {
+        foreach ($k in $Script:FinalizeResult.Keys) {
+            $v = "$($Script:FinalizeResult[$k])"
+            if ($v -match '^ERROR') { $att.Add("- $iFail **${k}**: $v") }
+            if ($k -eq 'Pospuesto') { $att.Add("- $iPause **Cierre pospuesto**: Administrador, usuario y dominio se hacen al relanzar el script con todo OK") }
+        }
+    }
+    foreach ($src in @(@{ n = 'Lenovo'; r = $Script:LenovoResult }, @{ n = 'Windows Update'; r = $Script:WuResult })) {
+        if (-not $src.r) { continue }
+        foreach ($f in @($src.r.failed)) { if ($f) { $att.Add("- $iWarn **$($src.n)**: $f") } }
+        foreach ($s in @($src.r.skipped | Where-Object { "$_" -match 'cargador' })) { $att.Add("- $iWarn **$($src.n)**: $s") }
+    }
+    $ad = if ($Script:PolicyResult) { "$($Script:PolicyResult['AnyDesk'])" } else { '' }
+    if ($ad -match '^(AVISO|ERROR)') { $att.Add("- $iWarn **AnyDesk**: $ad") }
+    if ($att.Count) { & $add "## $iWarn Atencion"; & $add; foreach ($l in $att) { & $add $l }; & $add }
+
+    # Apps: primero las que fallan, luego las mas lentas; las que ya estaban, al final
+    $rows = foreach ($a in $Script:Apps) {
+        $r = Get-AppRecord $State $a.Name
+        if (-not $r) { [pscustomobject]@{ N = $a.Name; E = '- sin ejecutar'; S = -1; K = 3 }; continue }
+        $sec = [int](@($r.history) | Measure-Object -Property sec -Sum).Sum
+        if (-not $sec) { $sec = [int]$r.elapsed_sec }
+        $e, $k = if ($r.preinstalled) { "$iOk ya estaba", 2 }
+                 elseif ($r.status -eq 'ok') { $iOk, 1 }
+                 elseif ($r.status -eq 'ok_reboot') { "$iOk pide reinicio", 1 }
+                 elseif ($r.status -eq 'ok_unverified') { "$iWarn sin confirmar", 1 }
+                 elseif ($r.status -eq 'fail_timeout') { "$iFail colgado", 0 }
+                 elseif ($r.status -eq 'fail') { "$iFail error $($r.exit_code)", 0 }
+                 elseif ($r.status -eq 'blocked') { "$iStop bloqueada", 0 }
+                 elseif ($r.status -eq 'skipped_by_user') { "$iSkip saltada", 2 }
+                 else { $r.status, 1 }
+        [pscustomobject]@{ N = $r.name; E = $e; S = $(if ($r.preinstalled -or $r.status -in 'skipped_by_user','blocked') { -1 } else { $sec }); K = $k }
+    }
+    & $add '## Apps'
+    & $add
+    & $add '| App | Estado | Tiempo |'
+    & $add '|---|---|---|'
+    foreach ($w in ($rows | Sort-Object K, @{ Expression = 'S'; Descending = $true }, N)) {
+        & $add "| $($w.N) | $($w.E) | $(if ($w.S -ge 0) { & $fmtT $w.S } else { '-' }) |"
+    }
+    & $add
+
+    # Equipo, en pocas lineas (la seccion solo sale si hay algo que contar)
+    $sbMain = $sb; $sb = New-Object Text.StringBuilder
+    $fs = $Script:FinalizeStatus
+    if ($fs) {
+        $dom = "$($Script:FinalizeResult['Dominio'])"
+        & $add ("- **Cierre:** Administrador {0} | usuario fuera de Administradores {1} | dominio: {2}" -f $(if ($fs.AdminOk) { $iOk } else { $iFail }), $(if ($fs.UserOk) { $iOk } else { $iFail }), $(if ($dom) { $dom } else { '-' }))
+    } elseif ($Script:FinalizeResult -and $Script:FinalizeResult.Contains('Pospuesto')) {
+        & $add "- **Cierre:** $iPause pospuesto (hay apps con fallo)"
+    }
+    if ($ad) { & $add "- **AnyDesk:** $ad" }
+    if ($Script:ClockResult -and $Script:ClockResult -match 'antes|corregido|ERROR') { & $add "- **Hora:** $($Script:ClockResult)" }
     if ($Script:LenovoResult) {
         $lr = $Script:LenovoResult
-        [void]$sb.AppendLine('## Actualizaciones Lenovo')
-        [void]$sb.AppendLine('')
-        if ($lr.model) { [void]$sb.AppendLine("- **Equipo:** $($lr.model) | pendientes en el catalogo: $($lr.found) | $($lr.seconds) s") }
-        [void]$sb.AppendLine("- **Instaladas ($(@($lr.installed).Count)):** $(if (@($lr.installed).Count) { @($lr.installed) -join '; ' } else { 'ninguna' })")
-        if (@($lr.failed).Count)  { [void]$sb.AppendLine("- **Con fallo ($(@($lr.failed).Count)):** $(@($lr.failed) -join '; ')") }
-        if (@($lr.skipped).Count) { [void]$sb.AppendLine("- **No instaladas ($(@($lr.skipped).Count)):** $(@($lr.skipped) -join '; ')") }
-        if (@($lr.pending).Count) { [void]$sb.AppendLine("- **Pendiente:** $(@($lr.pending) -join ', ') (el firmware/BIOS se graba al reiniciar)") }
-        if (@($lr.notes).Count)   { [void]$sb.AppendLine("- **Notas:** $(@($lr.notes) -join '; ')") }
-        [void]$sb.AppendLine('')
+        & $add ("- **Lenovo** ({0}): {1} instaladas{2}{3}" -f $(if ($lr.model) { $lr.model } else { '-' }), @($lr.installed).Count, $(if (@($lr.pending).Count) { ', firmware/controladores pendientes de reinicio' }), $(if ($lr.seconds) { " - $(Format-Duration ([int]$lr.seconds))" }))
     }
     if ($Script:WuResult) {
         $wr = $Script:WuResult
-        [void]$sb.AppendLine('## Windows Update')
-        [void]$sb.AppendLine('')
-        [void]$sb.AppendLine("- **Instaladas ($(@($wr.installed).Count)):** $(if (@($wr.installed).Count) { @($wr.installed) -join '; ' } else { 'ninguna' })")
-        if (@($wr.failed).Count)  { [void]$sb.AppendLine("- **Con fallo ($(@($wr.failed).Count)):** $(@($wr.failed) -join '; ')") }
-        if (@($wr.skipped).Count) { [void]$sb.AppendLine("- **No instaladas ($(@($wr.skipped).Count)):** $(@($wr.skipped) -join '; ')") }
-        if ($wr.reboot)           { [void]$sb.AppendLine('- **Pendiente:** reinicio para terminar de aplicar las actualizaciones') }
-        if (@($wr.notes).Count)   { [void]$sb.AppendLine("- **Notas:** $(@($wr.notes) -join '; ') | $($wr.seconds) s") }
-        [void]$sb.AppendLine('')
+        & $add ("- **Windows Update:** {0} instaladas{1}{2}" -f @($wr.installed).Count, $(if ($wr.reboot) { ', pide reinicio' }), $(if (@($wr.notes | Where-Object { $_ -match 'descarga' }).Count) { " ($((@($wr.notes | Where-Object { $_ -match 'descarga' })) -join '; '))" }))
     }
-    if ($Script:PolicyResult -and $Script:PolicyResult.Count) {
-        [void]$sb.AppendLine('## Configuracion de apps')
-        [void]$sb.AppendLine('')
-        foreach ($k in $Script:PolicyResult.Keys) { [void]$sb.AppendLine("- **${k}:** $($Script:PolicyResult[$k])") }
-        [void]$sb.AppendLine('')
-    }
+    if ($Script:PolicyResult -and $Script:PolicyResult.Contains('PDF24 Creator')) { & $add '- **PDF24:** solo en local (sin servicios online); en el escritorio solo PDF24 Toolbox' }
     if ($Script:OptimizeResult) {
-        [void]$sb.AppendLine('## Optimizacion de Windows')
-        [void]$sb.AppendLine('')
-        foreach ($k in $Script:OptimizeResult.Keys) { [void]$sb.AppendLine("- **${k}:** $($Script:OptimizeResult[$k])") }
-        [void]$sb.AppendLine('')
+        $o = $Script:OptimizeResult
+        $nApps = @("$($o['Apps de Store quitadas'])" -split ', ' | Where-Object { $_ -and $_ -notmatch 'aprovisionada|ninguna' }).Count
+        $off = @($o.Keys | Where-Object { $_ -like 'Arranque:*' -and "$($o[$_])" -eq 'deshabilitado' } | ForEach-Object { $_ -replace '^Arranque: ', '' -replace '\.lnk$', '' })
+        & $add ("- **Optimizacion:** {0} apps de Store quitadas | sin arrancar con Windows: {1} | barra de tareas: Outlook y Teams, sin Store | TRIM {2}" -f $nApps, $(if ($off) { $off -join ', ' } else { '-' }), "$($o['TRIM (SSD)'])")
     }
-    [void]$sb.AppendLine('## Detalle y cronograma')
-    [void]$sb.AppendLine('')
-    [void]$sb.AppendLine('| App | Carril | Estado | Inicio (mm:ss) | Duracion | Intentos | Exit | Evidencia / errores |')
-    [void]$sb.AppendLine('|---|---|---|---|---|---|---|---|')
-    foreach ($a in ($Script:Apps | Sort-Object Lane, Order)) {
-        $r = Get-AppRecord $State $a.Name
-        if (-not $r) { [void]$sb.AppendLine("| $($a.Name) | $($a.Lane) | not_run | - | - | - | - | - |"); continue }
-        $info = if ($r.status -in $Script:OkStatus) { ($r.evidence -join '; ') } else { ($r.errors -join '; ') }
-        if (-not $info) { $info = '-' }
-        if ($r.preinstalled) {
-            [void]$sb.AppendLine("| $($r.name) | $($a.Lane) | ok (ya estaba) | - | - | - | - | $info |")
-            continue
-        }
-        $ini = if ($null -ne $r.start_offset_sec -and "$($r.start_offset_sec)" -ne '') { Format-Clock ([int]$r.start_offset_sec) } else { '-' }
-        $durTxt = if ($r.status -in 'skipped_by_user','blocked' -or ($r.status -eq 'ok' -and -not $r.attempts)) { '-' } else { Format-Duration ([int]$r.elapsed_sec) }
-        [void]$sb.AppendLine("| $($r.name) | $($a.Lane) | $($r.status) | $ini | $durTxt | $($r.attempts) | $($r.exit_code) | $info |")
-    }
-    $bad = @($apps | Where-Object { $_.status -like 'fail*' -or $_.status -eq 'blocked' })
-    if ($bad.Count) {
-        [void]$sb.AppendLine('')
-        [void]$sb.AppendLine('## Apps con fallo')
-        foreach ($a in $bad) {
-            [void]$sb.AppendLine('')
-            [void]$sb.AppendLine("### $($a.name)")
-            [void]$sb.AppendLine("- Estado: ``$($a.status)`` | Exit: ``$($a.exit_code)``")
-            [void]$sb.AppendLine("- Args: ``$($a.args_used)``")
-            [void]$sb.AppendLine("- Log: ``$($a.install_log)``")
-            [void]$sb.AppendLine("- Errores: $($a.errors -join '; ')")
-            if ("$($a.exit_code)" -eq '-2147213312') {
-                [void]$sb.AppendLine('- Pista: 0x80042000 = iManage no detecta un prerrequisito (Office con Word y Outlook registrados, o Agent Services). El motivo exacto va en las lineas `imanage:` de arriba o en el log de iManage copiado a `state\logs`. Comprobacion rapida en el equipo: `NodeDeploy_Run\PRO\Diag-iManageWD.ps1`.')
-            }
-        }
-    }
+    $eq = $sb.ToString(); $sb = $sbMain
+    if ($eq.Trim()) { & $add '## Equipo'; & $add; [void]$sb.Append($eq); & $add }
+
+    # Detalle de actualizaciones (lo que se instalo), al final y en una linea por origen
+    $upd = @()
+    if ($Script:LenovoResult -and @($Script:LenovoResult.installed).Count) { $upd += "- **Lenovo:** $(@($Script:LenovoResult.installed) -join '; ')" }
+    if ($Script:WuResult -and @($Script:WuResult.installed).Count)         { $upd += "- **Windows Update:** $(@($Script:WuResult.installed) -join '; ')" }
+    if ($upd) { & $add '## Actualizaciones instaladas'; & $add; foreach ($u in $upd) { & $add $u }; & $add }
+    & $add "Log: ``$($Script:LogFile)``"
+
     Set-Content -Path $reportFile -Value $sb.ToString() -Encoding UTF8
     Write-Log "Report: $reportFile" 'OK'
     return $reportFile
@@ -1987,7 +2151,8 @@ if ($Script:LenovoProc) {
         [void]$Script:LenovoProc.WaitForExit(1800000)
     }
     if (-not $Script:LenovoProc.HasExited) {
-        # No se corta: podria estar grabando firmware. Se informa y se sigue.
+        # No se corta: podria estar grabando firmware. Se informa y se sigue; el vigilante reinicia cuando acabe.
+        $Script:LenovoRunning = $true
         $Script:LenovoResult = [ordered]@{ failed = @('no termino en 30 min: sigue en segundo plano (no apagues el equipo)'); installed = @(); skipped = @(); pending = @(); notes = @() }
         Write-Log 'Lenovo: no termino en 30 min, sigue en segundo plano' 'WARN'
     } elseif (Test-Path -LiteralPath $Script:LenovoJson) {
@@ -2010,6 +2175,7 @@ if ($Script:WuProc) {
         [void]$Script:WuProc.WaitForExit(2700000)
     }
     if (-not $Script:WuProc.HasExited) {
+        $Script:WuRunning = $true
         $Script:WuResult = [ordered]@{ found = 0; installed = @(); failed = @('no termino en 45 min: sigue en segundo plano (no apagues el equipo)'); skipped = @(); reboot = $false; notes = @() }
         Write-Log 'Windows Update: no termino en 45 min, sigue en segundo plano' 'WARN'
     } elseif (Test-Path -LiteralPath $Script:WuJson) {
@@ -2055,6 +2221,7 @@ if ($Script:DoOptimize -and (Get-Command Set-StartupPolicy -ErrorAction Silently
 }
 
 # Cierre del equipo: solo con todas las apps OK (Administrador -> usuario -> dominio, en ese orden).
+$Script:DomainWanted = [bool]($Script:FinalizeAnswers -and $Script:FinalizeAnswers.Domain)
 if ($Script:FinalizeAnswers) {
     $pending = @(Get-AllRecords $State | Where-Object { $_.status -like 'fail*' -or $_.status -eq 'blocked' })
     if ($pending.Count -eq 0) {
@@ -2064,27 +2231,63 @@ if ($Script:FinalizeAnswers) {
         $Script:FinalizeResult = [ordered]@{ 'Pospuesto' = "hay $($pending.Count) app(s) con fallo; se hara al relanzar el script cuando todas esten OK" }
         Write-Log "[CIERRE] Pospuesto: $($pending.Count) app(s) con fallo. Relanza el script cuando esten OK." 'WARN'
     }
-    $Script:FinalizeAnswers = $null   # las contrasenas no se guardan mas alla de este punto
+    # Las contrasenas no se guardan: la del dominio vive en memoria solo hasta subir los logs (misma cuenta).
+    $Script:LogCred = $Script:FinalizeAnswers.DomainCredential
+    $Script:FinalizeAnswers = $null
 
-    # Reinicio / apagado automatico (lo hace Deploy.bat tras Validate, con 15 s de aviso). Nunca antes del paso del
-    # dominio (Lenovo ya termino antes del cierre): solo si TODO quedo verificado (apps, Administrador activo, cuenta
-    # estandar fuera de Administradores y paso del dominio hecho: unido, ya estaba o "no") y algo pide reiniciar
-    # (union al dominio, firmware/BIOS de Lenovo, instaladores o Windows). Si Lenovo pide apagar, se apaga.
-    $dec = Get-AutoRebootDecision -Records @(Get-AllRecords $State) -MissingApps @($Script:Apps | Where-Object { -not (Get-AppRecord $State $_.Name) } | ForEach-Object { $_.Name }) `
-        -FinalizeStatus $Script:FinalizeStatus -LenovoResult $Script:LenovoResult -WindowsPending ([bool](Test-PendingReboot).HardPending) -WuResult $Script:WuResult
-    if ($dec.Action) {
+    # Reinicio / apagado automatico (lo hace Deploy.bat, con 15 s de aviso) siempre que algo lo pida: dominio unido,
+    # Lenovo, Windows Update, instaladores o Windows. Nunca antes del dominio: si se pidio dominio y no esta unido,
+    # no. Si las actualizaciones siguen instalandose, un vigilante reinicia cuando terminen. Una app con fallo no
+    # lo frena (se apunta). Si Lenovo pide apagar (algun firmware), se apaga.
+    $dec = Get-AutoRebootDecision -Records @(Get-AllRecords $State) -FinalizeStatus $Script:FinalizeStatus -DomainWanted $Script:DomainWanted `
+        -LenovoResult $Script:LenovoResult -WuResult $Script:WuResult -WindowsPending ([bool](Test-PendingReboot).HardPending) `
+        -UpdatesRunning ([bool]($Script:LenovoRunning -or $Script:WuRunning))
+    $warnTxt = if ($dec.Warn) { " | aviso: $($dec.Warn -join '; ')" } else { '' }
+    if ($NoAutoReboot) {
+        $Script:FinalizeResult['Reinicio automatico'] = "desactivado (-NoAutoReboot)$(if ($dec.Need) { "; pediria: $($dec.Need -join ', ')" })"
+    } elseif ($dec.Action) {
         Set-Content -LiteralPath $Script:AutoRebootFlag -Value @($dec.Action, ($dec.Need -join ', ')) -Encoding ASCII
-        $Script:FinalizeResult['Reinicio automatico'] = "si: $($dec.Action) en 15 s tras la validacion ($($dec.Need -join ', ')); shutdown /a para cancelar"
-        Write-Log "[CIERRE] Todo verificado: $($dec.Action) automatico tras la validacion ($($dec.Need -join ', '))" 'OK'
+        $Script:FinalizeResult['Reinicio automatico'] = "si: $($dec.Action) en 15 s ($($dec.Need -join ', ')); shutdown /a para cancelar$warnTxt"
+        Write-Log "[CIERRE] $($dec.Action) automatico en 15 s: $($dec.Need -join ', ')$warnTxt" 'OK'
+    } elseif ($dec.Why.Count -eq 1 -and $dec.Why[0] -eq 'actualizaciones aun instalandose') {
+        # El vigilante espera a que terminen (sin cortarlas) y a que acabe este script; luego borra la carpeta del
+        # escritorio si se marca abajo y reinicia si algo lo pide, tambien lo que ya pedia ahora (Need: dominio...).
+        # Se ejecuta desde ProgramData: no depende de la carpeta de NodeDeploy (la del escritorio se puede borrar)
+        $mon = Join-Path $Script:MonitorDir 'RebootMonitor.ps1'
+        try {
+            New-Item -ItemType Directory -Force -Path $Script:MonitorDir | Out-Null
+            Copy-Item -LiteralPath (Join-Path $Script:ScriptDir 'RebootMonitor.ps1'), (Join-Path $Script:ScriptDir 'Cleanup.ps1') -Destination $Script:MonitorDir -Force
+        } catch {}
+        $pidList = @(@($Script:LenovoProc, $Script:WuProc) | Where-Object { $_ -and -not $_.HasExited } | ForEach-Object { $_.Id }) + @($PID)
+        $monArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$mon`" -Pids $($pidList -join ',') -LogFile `"$($Script:LogFile)`" -CleanupFlag `"$(Join-Path $Script:MonitorDir 'borrar_carpeta.flag')`""
+        # Solo los JSON de lo que se lanzo (sin JSON al final = no termino bien). Nada vacio: PS 5.1 lo descarta.
+        if ($Script:LenovoProc) { $monArgs += " -LenovoJson `"$($Script:LenovoJson)`"" }
+        if ($Script:WuProc)     { $monArgs += " -WuJson `"$($Script:WuJson)`"" }
+        if ($dec.Need)          { $monArgs += " -Need `"$($dec.Need -join ', ')`"" }
+        if (Test-Path -LiteralPath $mon) {
+            Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -ArgumentList $monArgs | Out-Null
+            $Script:MonitorStarted = $true
+            $Script:FinalizeResult['Reinicio automatico'] = "pendiente: el vigilante reinicia cuando terminen las actualizaciones (no apagues el equipo)$warnTxt"
+            Write-Log "[CIERRE] Vigilante de reinicio activo (PID $($pidList -join ', ')): reinicia al terminar las actualizaciones" 'OK'
+        } else {
+            $Script:FinalizeResult['Reinicio automatico'] = "no: actualizaciones aun instalandose (reinicia tu cuando terminen)$warnTxt"
+        }
     } elseif (-not $dec.Why) {
-        $Script:FinalizeResult['Reinicio automatico'] = 'no hace falta: todo verificado y nada pide reiniciar'
-        Write-Log '[CIERRE] Todo verificado; nada pide reiniciar' 'OK'
+        $Script:FinalizeResult['Reinicio automatico'] = "no hace falta: nada pide reiniciar$warnTxt"
+        Write-Log '[CIERRE] Nada pide reiniciar' 'OK'
     } else {
-        $Script:FinalizeResult['Reinicio automatico'] = "no: $($dec.Why -join '; ')"
+        $Script:FinalizeResult['Reinicio automatico'] = "no: $($dec.Why -join '; ')$warnTxt"
         Write-Log "[CIERRE] Sin reinicio automatico: $($dec.Why -join '; ')" 'INFO'
     }
     Save-State $State
 }
+
+# Herramientas que abre Deploy.bat al terminar: solo lo que haya que revisar a mano (cuentas / dominio).
+$fsT = $Script:FinalizeStatus
+$toolsList = @()
+if (-not ($fsT -and $fsT.AdminOk -and $fsT.UserOk)) { $toolsList += 'lusrmgr' }
+if (-not ($fsT -and $fsT.DomainDone))               { $toolsList += 'sysdm' }
+Set-Content -LiteralPath (Join-Path $Script:StatePath 'herramientas.txt') -Value $toolsList -Encoding ASCII
 
 Write-Step 'REPORT FINAL'
 $reportFile = Write-FinalReport $State
@@ -2096,6 +2299,41 @@ Write-Log "Duracion total: $(Format-Duration (Get-Elapsed))" 'INFO'
 Write-Log "OK: $(@($apps | Where-Object { $_.status -in $Script:OkStatus }).Count) / $(@($Script:Apps).Count)" 'OK'
 Write-Log "FAIL/BLOCKED: $($failures.Count)$(if ($failures.Count) { ' -> ' + (($failures | ForEach-Object { $_.name }) -join ', ') })" $(if ($failures.Count) { 'ERROR' } else { 'INFO' })
 Write-Log "Report: $reportFile" 'INFO'
+
+# Logs de esta ejecucion a la carpeta de red (o al lado de la carpeta de NodeDeploy) y, si TODO quedo listo y la
+# carpeta esta en un Escritorio, aviso a Deploy.bat para borrarla al terminar. Nada de esto frena ni cuenta como fallo.
+if (-not $DryRun -and $Phase -in 'full','install','resume') {
+    $realFail = { param($r) @(@($r.failed) | Where-Object { $_ -and "$_" -notmatch '^no termino' }).Count }
+    $errs = @()
+    if ($failures.Count) { $errs += "apps: $(($failures | ForEach-Object { $_.name }) -join ', ')" }
+    if ($Script:LenovoResult -and (& $realFail $Script:LenovoResult)) { $errs += 'Lenovo' }
+    if ($Script:WuResult -and (& $realFail $Script:WuResult)) { $errs += 'Windows Update' }
+    if ($Script:FinalizeResult -and @(@($Script:FinalizeResult.Values) -match '^ERROR').Count) { $errs += 'cierre del equipo' }
+    if ($Script:PolicyResult -and "$($Script:PolicyResult['AnyDesk'])" -match '^(AVISO|ERROR)') { $errs += 'AnyDesk' }
+    $summary = if ($errs) { "CON ERRORES ($($errs -join '; '))" } else { 'SIN ERRORES' }
+    try {
+        $logsTxt = Save-RunLogs -HasErrors ([bool]$errs.Count) -Credential $Script:LogCred -ReportFile $reportFile -Summary $summary
+        Write-Log "Logs ($summary): $logsTxt" 'INFO'
+        Add-Content -LiteralPath $reportFile -Value "`r`n**Logs:** $logsTxt" -Encoding UTF8 -ErrorAction SilentlyContinue
+    } catch { Write-Log "Logs: no se pudieron guardar ($($_.Exception.Message))" 'WARN' }
+    $Script:LogCred = $null
+
+    $fsC = $Script:FinalizeStatus
+    $allDone = (-not $errs.Count) -and $fsC -and $fsC.AdminOk -and $fsC.UserOk -and $fsC.DomainDone
+    $nodeRoot = Split-Path -Parent (Split-Path -Parent $Script:ScriptDir)
+    if (-not $KeepFolder -and (Test-CleanupAllowed -Root $nodeRoot -AllDone $allDone)) {
+        if (-not ($Script:LenovoRunning -or $Script:WuRunning)) {
+            Set-Content -LiteralPath (Join-Path $Script:StatePath 'borrar_carpeta.flag') -Value $nodeRoot -Encoding UTF8
+            Write-Log "Todo listo: la carpeta $nodeRoot se borra al terminar (-KeepFolder la conserva)" 'OK'
+            Add-Content -LiteralPath $reportFile -Value "`r`n**Carpeta:** se borra sola al cerrar (logs ya guardados)." -Encoding UTF8 -ErrorAction SilentlyContinue
+        } elseif ($Script:MonitorStarted) {
+            # Las actualizaciones siguen (usan la carpeta): la borra el vigilante cuando terminen, si no fallan
+            Set-Content -LiteralPath (Join-Path $Script:MonitorDir 'borrar_carpeta.flag') -Value $nodeRoot -Encoding UTF8
+            Write-Log "Todo listo salvo las actualizaciones: el vigilante borra $nodeRoot cuando terminen (si no fallan)" 'OK'
+            Add-Content -LiteralPath $reportFile -Value "`r`n**Carpeta:** se borra sola cuando terminen las actualizaciones, si no fallan (vigilante.log en ProgramData\NodeDeploy)." -Encoding UTF8 -ErrorAction SilentlyContinue
+        }
+    }
+}
 
 if ($State.reboot_required) {
     Write-Log '=== REINICIO REQUERIDO === Reinicia el equipo para completar (instaladores que lo piden y/o union al dominio)' 'WARN'

@@ -52,13 +52,13 @@ Nada más arrancar pone la hora bien (zona de España y reloj en hora; con la ho
 La consola muestra cada carril e intento:
 
 ```
-[OFFICE] Word presente, Outlook ausente -> OutlookClassic.exe (instalador Microsoft 'classic Outlook') en t=0
+[OFFICE] ODT OutlookRetail sobre O365BusinessRetail v16.0.20026.20112 canal Current (MatchInstalled)
 [MSI] >> AnyDesk (intento 1/3) [msi]
 [EXE] >> Bit4id Middleware (intento 1/3) [exe]
 [MSI] OK   AnyDesk (4s) [registry:AnyDesk ...]
 [MSI] RETRY AqNet - msi_busy:1618. Nuevo intento en 15s      <- Windows Update ocupando el instalador: se espera solo
 ...
-OK   Outlook clasico [bootstrap, exit 0] (300s)
+OK   Outlook clasico [odt, exit 0] (183s)
 [MSI] >> iManage Work Desktop (intento 1/3) [installshield-imanage]
 ```
 
@@ -68,13 +68,15 @@ OK   Outlook clasico [bootstrap, exit 0] (300s)
   RESULT: SUCCESS   Phase=full   exit=0
 ```
 
-Se abren: `POSTVALIDATE_REPORT.md` (estado + cronograma), **Local Users and Groups** y **System Properties**.
+Se abre `POSTVALIDATE_REPORT.md`: resultado en una línea, **Atención** (solo si hay algo que hacer) y la tabla App / Estado / **Tiempo** (lo que pasa de 1 minuto, marcado). `lusrmgr.msc` / `sysdm.cpl` solo se abren si hay algo de cuentas o dominio que revisar.
+
+Al terminar, el zip de logs se sube a la carpeta de red (`NodeDeploy_Success` / `NodeDeploy_Errors`) y, si todo quedó listo, **la carpeta del escritorio se borra sola** (si las actualizaciones siguen, cuando terminen; `-KeepFolder` la conserva).
 
 | Exit | Acción |
 |---|---|
-| 0 | Todo OK (sin dominio). Reinicio recomendado. |
-| 1 | Algo falló tras 3 intentos (cierre pospuesto). Revisa el reporte; desinstala lo que quede a medias y relanza el script. |
-| 3 | Reinicio requerido (dominio, BIOS/firmware de Lenovo o un instalador). Si todo quedó verificado (con dominio unido o `no`), **reinicia solo a los 15 s** (`shutdown /a` lo cancela; si el firmware pide apagar, apaga: enciéndelo luego); si no, reinicia tú. |
+| 0 | Todo OK y nada pide reiniciar. |
+| 1 | Alguna app falló (se cortó rápido y se siguió con las demás; cierre pospuesto). Mira "Atención": motivo, en qué se quedó y las últimas líneas de su log. Arréglalo y relanza el script (salta lo ya instalado). |
+| 3 | Hace falta reiniciar (dominio, Lenovo, Windows Update o un instalador): **reinicia solo a los 15 s** (`shutdown /a` lo cancela; si el firmware pide apagar, apaga: enciéndelo luego), salvo que falte unir el dominio pedido. Si las actualizaciones siguen instalándose, reinicia el vigilante cuando terminen: no lo apagues. |
 
 ## 5) Validar a mano
 

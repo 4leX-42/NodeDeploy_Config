@@ -38,7 +38,7 @@ if (-not $NoRevert) {
     Write-LabLog "Revirtiendo a '$Snapshot'..." 'STEP'
     Invoke-Vmrun -Arguments @('revertToSnapshot', $cfg.VmxPath, $Snapshot) | Out-Null
 }
-if (-not (Test-LabRunning $cfg)) { Invoke-Vmrun -Arguments @('start', $cfg.VmxPath, 'nogui') | Out-Null }
+Start-LabVm -Config $cfg
 Wait-LabTools -Config $cfg -TimeoutMin 15 | Out-Null
 Set-LabShareToRepo -Config $cfg
 Write-LabLog "VM lista (carpeta compartida -> $($Script:RepoRoot))" 'OK'

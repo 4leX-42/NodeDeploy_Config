@@ -105,6 +105,10 @@ Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer' | Select-O
 Get-ItemProperty 'HKLM:\SOFTWARE\PDF24' | Select-Object '!NoOnlineConverter','!NoOnlinePdfTools','!NoFax',UpdateMode   # 1 / 1 / 1 / 2
 ```
 
+## Logs
+
+El zip de la ejecución está en la carpeta de red (`NodeDeploy_Success` o `NodeDeploy_Errors`); la ruta exacta sale al final del informe (**Logs:**). Sin red, en `LOGS_preparation\` al lado de la carpeta de NodeDeploy.
+
 ## Windows Update
 
 Sección **Windows Update** de `POSTVALIDATE_REPORT.md`: instaladas, con fallo y no instaladas (cambios de versión de Windows y versiones preliminares se saltan a propósito). Tras el reinicio, en Configuración → Windows Update no debería quedar nada pendiente salvo lo opcional.
