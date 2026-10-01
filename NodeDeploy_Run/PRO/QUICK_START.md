@@ -27,19 +27,26 @@ nodedeploy\
 Al arrancar pregunta (luego todo va solo):
 
 ```
-Dominio al que unir el equipo:
-  1. Sede 1          empresa.local
-  2. Sede 2          sede2.empresa.local
-  ...
-  8. Otro (escribirlo a mano)
-  0. No unir a ningún dominio
-Elige un número: 1
-  -> Sede 1 (empresa.local)
-Usuario de empresa.local con permiso para unir equipos: tecnico
-Contraseña de empresa.local\tecnico: ********
-Contraseña para el Administrador local: ********
-Repite la contraseña: ********
+  ══ NODEDEPLOY ══ cierre del equipo ══════════════════════ PC-123 ══
+  se aplica al final y solo si todas las apps quedan OK:
+  administrador local · usuario fuera de administradores · dominio
+
+  dominio   ↑↓ mover · enter elegir · o pulsa el número
+
+  ►  1  Sede 1          empresa.local          <- barra verde
+     2  Sede 2          sede2.empresa.local
+     ...
+     8  Otro            escribirlo a mano
+     0  Sin dominio     no unir el equipo
+
+  » dominio empresa.local · Sede 1
+  › usuario de empresa.local (con permiso para unir equipos)  tecnico
+  › contraseña de empresa.local\tecnico  ********
+  › contraseña para el administrador local  ********
+  › repítela  ********
 ```
+
+Flechas + Enter, o el número (y Enter). Si la consola no deja leer teclas, sale la lista y se escribe el número.
 
 Las sedes salen de `NodeDeploy_Run\PRO\Dominios.txt` (una por línea: `Sede = dominio`). Ese fichero **no va a GitHub** (el repo es público): está en el M.2 y en el PC; si falta, se escribe el dominio a mano. Plantilla: `Dominios.ejemplo.txt`.
 

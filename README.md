@@ -5,7 +5,7 @@
 1. Copia la **carpeta completa `nodedeploy\`** del M.2 al **Escritorio** del portátil (más rápido que ejecutarlo desde el M.2; al terminar bien, se borra sola).
 2. Portátil Lenovo con Windows 10/11 x64 y su Microsoft 365 de fábrica, con red por cable y **cargador conectado** (sin él no se instala firmware/BIOS).
 3. **Doble clic `nodedeploy\Pincha_pa_instalar.bat`** (o `NodeDeploy_Run\PRO\Deploy.bat`). Acepta UAC y responde las preguntas del arranque:
-   - **dominio**: menú numerado con las sedes de `NodeDeploy_Run\PRO\Dominios.txt` (no va a GitHub), `Otro` para escribirlo a mano o `0` = sin dominio; si hay dominio, usuario con permiso para unir equipos + contraseña;
+   - **dominio**: menú con flechas (o el número) con las sedes de `NodeDeploy_Run\PRO\Dominios.txt` (no va a GitHub), `Otro` para escribirlo a mano o `0` = sin dominio; si hay dominio, usuario con permiso para unir equipos + contraseña;
    - **contraseña del Administrador local** (dos veces).
    
    Si relanzas el script en un equipo ya terminado, no vuelve a preguntar lo ya hecho (Administrador activado, equipo en dominio).

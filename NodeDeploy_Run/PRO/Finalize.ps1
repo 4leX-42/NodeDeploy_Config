@@ -54,27 +54,143 @@ function Resolve-DomainAnswer {
     return $null
 }
 
+#region Consola de las preguntas del cierre
+# Estilo terminal: verde sobre negro, menú con flechas. Solo caracteres WGL4 (están en Consolas y Lucida Console).
+function Write-UiRule {
+    param([string]$Title)
+    $w = 70; try { $w = [Math]::Min(70, [Console]::WindowWidth - 3) } catch {}
+    $pc = "$env:COMPUTERNAME"
+    $fill = [Math]::Max(3, $w - 2 - 3 - 10 - 4 - $Title.Length - 2 - $pc.Length - 3)
+    Write-Host ''
+    Write-Host '  ══ ' -ForegroundColor DarkGreen -NoNewline
+    Write-Host 'NODEDEPLOY' -ForegroundColor Green -NoNewline
+    Write-Host ' ══ ' -ForegroundColor DarkGreen -NoNewline
+    Write-Host $Title -ForegroundColor Gray -NoNewline
+    Write-Host (' ' + ('═' * $fill) + ' ') -ForegroundColor DarkGreen -NoNewline
+    Write-Host $pc -ForegroundColor Green -NoNewline
+    Write-Host ' ══' -ForegroundColor DarkGreen
+}
+function Write-UiNote([string]$Text) { Write-Host "  $Text" -ForegroundColor DarkGray }
+function Write-UiWarn([string]$Text) { Write-Host "  ! $Text" -ForegroundColor Yellow }
+function Write-UiOk {
+    param([string]$Label, [string]$Value)
+    Write-Host '  » ' -ForegroundColor Green -NoNewline
+    Write-Host "$Label " -ForegroundColor Gray -NoNewline
+    Write-Host $Value -ForegroundColor Green
+}
+function Read-UiText {
+    # Pregunta en una línea: "  › etiqueta  respuesta". -Secret: con asteriscos (SecureString).
+    param([string]$Label, [switch]$Secret)
+    Write-Host '  › ' -ForegroundColor Green -NoNewline
+    Write-Host "$Label  " -ForegroundColor Gray -NoNewline
+    if ($Secret) { return (Read-Host -AsSecureString) }
+    return "$(Read-Host)".Trim()
+}
+function Select-UiOption {
+    # Menú con flechas: ↑↓ (Inicio / Fin) mueven, el número salta a esa línea, Enter elige. Devuelve el índice
+    # elegido, o $null si la consola no deja leer teclas (entonces se pregunta escribiendo, como antes).
+    # $Script:UiKeys: cola de teclas ([ConsoleKeyInfo]; un [int] = pausa en ms), solo para probarlo en el laboratorio.
+    param([object[]]$Rows, [string]$Title, [int]$Default = 0)
+    # Hace falta consola de verdad (entrada y salida): si no, se pregunta escribiendo
+    try {
+        if ([Console]::IsOutputRedirected) { return $null }
+        if (-not ($Script:UiKeys -and $Script:UiKeys.Count)) { if ([Console]::IsInputRedirected) { return $null }; $null = [Console]::KeyAvailable }
+        $null = [Console]::CursorTop
+    } catch { return $null }
+    $nameW = 2 + (@($Rows | ForEach-Object { "$($_.Text)".Length }) | Measure-Object -Maximum).Maximum
+    $hintW = (@($Rows | ForEach-Object { "$($_.Hint)".Length }) | Measure-Object -Maximum).Maximum
+    $W = 5 + 2 + 2 + $nameW + $hintW + 3
+    try { $W = [Math]::Min($W, [Console]::WindowWidth - 1) } catch {}
+    Write-Host ''
+    Write-Host "  $Title" -ForegroundColor Green -NoNewline
+    Write-Host '   ↑↓ mover · enter elegir · o pulsa el número' -ForegroundColor DarkGreen
+    Write-Host ''
+    # Cada línea ocupa justo $W columnas: al redibujar, la barra y las líneas normales se pisan enteras
+    $draw = {
+        param([int]$S)
+        for ($i = 0; $i -lt $Rows.Count; $i++) {
+            $r = $Rows[$i]
+            if ($i -eq $S) {
+                Write-Host '  ' -NoNewline
+                Write-Host (' ► {0,2}  {1}{2}' -f $r.Key, "$($r.Text)".PadRight($nameW), $r.Hint).PadRight($W - 2) -ForegroundColor Black -BackgroundColor Green
+            } else {
+                Write-Host '     ' -NoNewline
+                Write-Host ('{0,2}  ' -f $r.Key) -ForegroundColor DarkGreen -NoNewline
+                Write-Host "$($r.Text)".PadRight($nameW) -ForegroundColor Green -NoNewline
+                Write-Host "$($r.Hint)".PadRight([Math]::Max(0, $W - 9 - $nameW)) -ForegroundColor DarkGray
+            }
+        }
+    }
+    $sel = [Math]::Max(0, [Math]::Min($Default, $Rows.Count - 1))
+    $cv = $null; try { $cv = [Console]::CursorVisible; [Console]::CursorVisible = $false } catch {}
+    & $draw $sel
+    $top = [Console]::CursorTop - $Rows.Count
+    $buf = ''; $last = [datetime]::MinValue
+    try {
+        while ($true) {
+            if ($Script:UiKeys -and $Script:UiKeys.Count) {
+                $k = $Script:UiKeys.Dequeue()
+                if ($k -is [int]) { Start-Sleep -Milliseconds $k; continue }
+            } else { $k = [Console]::ReadKey($true) }
+            $new = $sel
+            switch ($k.Key) {
+                'UpArrow'   { $new = ($sel - 1 + $Rows.Count) % $Rows.Count }
+                'DownArrow' { $new = ($sel + 1) % $Rows.Count }
+                'Home'      { $new = 0 }
+                'End'       { $new = $Rows.Count - 1 }
+                'Enter'     { return $sel }
+                default {
+                    # Número: salta a esa línea (dos cifras seguidas si la lista llega a 10)
+                    if ("$($k.KeyChar)" -match '^\d$') {
+                        if (((Get-Date) - $last).TotalMilliseconds -gt 900) { $buf = '' }
+                        $buf += "$($k.KeyChar)"; $last = Get-Date
+                        $j = -1
+                        foreach ($cand in @($buf, "$($k.KeyChar)")) {
+                            for ($i = 0; $i -lt $Rows.Count -and $j -lt 0; $i++) { if ("$($Rows[$i].Key)" -eq $cand) { $j = $i } }
+                            if ($j -ge 0) { break }
+                        }
+                        if ($j -ge 0) { $new = $j }
+                    }
+                }
+            }
+            if ($new -ne $sel) { $sel = $new; [Console]::SetCursorPosition(0, $top); & $draw $sel }
+        }
+    } finally {
+        try { if ($null -ne $cv) { [Console]::CursorVisible = $cv } } catch {}
+        try { [Console]::SetCursorPosition(0, $top + $Rows.Count) } catch {}
+    }
+}
+#endregion
+
 function Read-DomainChoice {
-    # Menú numerado: 1..N = dominios de Dominios.txt, N+1 = otro (a mano), 0 = sin dominio. Sin lista, se escribe.
+    # Menú de Dominios.txt: 1..N = sedes, N+1 = otro (a mano), 0 = sin dominio; con flechas o el número.
+    # Si la consola no deja leer teclas: lista y número escrito. Sin lista: se escribe el dominio.
     param($List)
     $n = @($List).Count
+    $r = $null
     if ($n) {
-        Write-Host 'Dominio al que unir el equipo:' -ForegroundColor Cyan
-        for ($i = 0; $i -lt $n; $i++) { Write-Host ('  {0}. {1,-15} {2}' -f ($i + 1), $List[$i].Name, $List[$i].Domain) }
-        Write-Host ('  {0}. Otro (escribirlo a mano)' -f ($n + 1))
-        Write-Host  '  0. No unir a ningún dominio'
-    }
-    while ($true) {
-        $prompt = if ($n) { 'Elige un número' } else { 'Dominio al que unir el equipo (escribe no para no unirlo)' }
-        $r = Resolve-DomainAnswer -Answer (Read-Host $prompt) -List $List
-        while ($r -eq '*manual') { $r = Resolve-DomainAnswer -Answer (Read-Host 'Escribe el dominio (p. ej. empresa.local; no = sin dominio)') -List @() }
-        if ($r) {
-            $sel = @($List | Where-Object { $_.Domain -eq $r }) | Select-Object -First 1
-            Write-Host ('  -> {0}' -f $(if ($r -eq 'no') { 'sin dominio' } elseif ($sel) { "$($sel.Name) ($r)" } else { $r })) -ForegroundColor Green
-            return $r
+        $rows = @(for ($i = 0; $i -lt $n; $i++) { [pscustomobject]@{ Key = "$($i + 1)"; Text = $List[$i].Name; Hint = $List[$i].Domain } }) +
+                @([pscustomobject]@{ Key = "$($n + 1)"; Text = 'Otro'; Hint = 'escribirlo a mano' },
+                  [pscustomobject]@{ Key = '0'; Text = 'Sin dominio'; Hint = 'no unir el equipo' })
+        $ix = Select-UiOption -Rows $rows -Title 'dominio'
+        if ($null -ne $ix) {
+            $r = Resolve-DomainAnswer -Answer $rows[$ix].Key -List $List
+        } else {
+            for ($i = 0; $i -lt $rows.Count; $i++) { Write-Host ('     {0,2}  {1,-15} {2}' -f $rows[$i].Key, $rows[$i].Text, $rows[$i].Hint) -ForegroundColor Green }
+            while (-not $r) {
+                $r = Resolve-DomainAnswer -Answer (Read-UiText 'número') -List $List
+                if (-not $r) { Write-UiWarn 'no válido: el número de la lista' }
+            }
         }
-        Write-Host $(if ($n) { '  No válido: escribe el número de la lista.' } else { '  No válido: escribe el dominio (con punto) o no.' }) -ForegroundColor Yellow
     }
+    while (-not $r -or $r -eq '*manual') {
+        $r = Resolve-DomainAnswer -Answer (Read-UiText 'dominio (p. ej. empresa.local; no = sin dominio)') -List @()
+        if (-not $r) { Write-UiWarn 'no válido: el dominio con punto, o no' }
+    }
+    $sel = @($List | Where-Object { $_.Domain -eq $r }) | Select-Object -First 1
+    Write-Host ''
+    Write-UiOk 'dominio' $(if ($r -eq 'no') { 'sin dominio' } elseif ($sel) { "$r · $($sel.Name)" } else { $r })
+    return $r
 }
 
 function Read-FinalizeAnswers {
@@ -92,14 +208,12 @@ function Read-FinalizeAnswers {
         if (-not "$Domain".Trim()) { $Domain = 'no' }
     }
     if ($needDomain -or $needAdmin) {
-        Write-Host ''
-        Write-Host '================ CIERRE DEL EQUIPO ================' -ForegroundColor Cyan
-        Write-Host ' Se aplica al final y solo si todas las apps quedan OK:' -ForegroundColor Cyan
-        Write-Host ' Administrador local con contraseña, usuario fuera de Administradores y dominio.' -ForegroundColor Cyan
-        Write-Host ''
+        Write-UiRule 'cierre del equipo'
+        Write-UiNote 'se aplica al final y solo si todas las apps quedan OK:'
+        Write-UiNote 'administrador local · usuario fuera de administradores · dominio'
     }
-    if ($inDomain) { Write-Host "El equipo ya está en el dominio $inDomain`: no se pregunta el dominio." -ForegroundColor DarkGray }
-    if ($adminReady) { Write-Host "El Administrador local ya está activado con contraseña: no se vuelve a pedir." -ForegroundColor DarkGray }
+    if ($inDomain) { Write-UiNote "· ya está en el dominio $inDomain`: no se pregunta" }
+    if ($adminReady) { Write-UiNote '· el administrador local ya tiene contraseña: no se vuelve a pedir' }
 
     # 1) Dominio (o "no"): menú numerado con Dominios.txt. -Domain también admite el número de la lista.
     $list = @(Get-DomainList)
@@ -112,20 +226,20 @@ function Read-FinalizeAnswers {
         $Domain = $null
     } else {
         $user = ''
-        while (-not $user) { $user = "$(Read-Host "Usuario de $Domain con permiso para unir equipos")".Trim() }
+        while (-not $user) { $user = Read-UiText "usuario de $Domain (con permiso para unir equipos)" }
         if ($user -notmatch '[\\@]') { $user = "$Domain\$user" }
         $pw = $null
-        while (-not $pw -or $pw.Length -eq 0) { $pw = Read-Host "Contraseña de $user" -AsSecureString }
+        while (-not $pw -or $pw.Length -eq 0) { $pw = Read-UiText "contraseña de $user" -Secret }
         $cred = New-Object System.Management.Automation.PSCredential($user, $pw)
     }
 
     # 2) Contraseña del Administrador local (dos veces), salvo que ya este activado con contraseña
     $adminPw = $null
     for ($i = 1; $needAdmin -and $i -le 3 -and -not $adminPw; $i++) {
-        $a = Read-Host 'Contraseña para el Administrador local' -AsSecureString
-        if ($a.Length -eq 0) { Write-Host '  No puede estar vacía.' -ForegroundColor Yellow; continue }
-        $b = Read-Host 'Repite la contraseña' -AsSecureString
-        if (Test-SecureStringEqual $a $b) { $adminPw = $a } else { Write-Host '  No coinciden.' -ForegroundColor Yellow }
+        $a = Read-UiText 'contraseña para el administrador local' -Secret
+        if ($a.Length -eq 0) { Write-UiWarn 'no puede estar vacía'; continue }
+        $b = Read-UiText 'repítela' -Secret
+        if (Test-SecureStringEqual $a $b) { $adminPw = $a } else { Write-UiWarn 'no coinciden' }
     }
     if ($needAdmin -and -not $adminPw) { Write-Log 'Sin contraseña valida para el Administrador: no se tocaran las cuentas locales' 'WARN' }
 
