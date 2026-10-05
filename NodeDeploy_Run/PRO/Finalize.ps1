@@ -134,8 +134,10 @@ function Select-UiOption {
     # (en campo: "dos Madrid" al bajar)
     Write-Host ("`n" * ($Rows.Count - 1))
     [Console]::SetCursorPosition(0, [Math]::Max(0, [Console]::CursorTop - $Rows.Count))
-    $top = [Console]::CursorTop
     & $draw $sel
+    # Tras dibujar, el cursor queda justo debajo del menú. Se redibuja contando hacia arriba desde ahí, no desde
+    # una fila guardada: si la ventana cambia de tamaño (Windows Terminal recoloca el texto al abrirse, maximizar
+    # o redimensionar), la fila guardada ya no es la del menú y salía repetido ("dos Madrid" a veces)
     $buf = ''; $last = [datetime]::MinValue
     try {
         while ($true) {
@@ -164,11 +166,10 @@ function Select-UiOption {
                     }
                 }
             }
-            if ($new -ne $sel) { $sel = $new; [Console]::SetCursorPosition(0, $top); & $draw $sel }
+            if ($new -ne $sel) { $sel = $new; [Console]::SetCursorPosition(0, [Math]::Max(0, [Console]::CursorTop - $Rows.Count)); & $draw $sel }
         }
     } finally {
         try { if ($null -ne $cv) { [Console]::CursorVisible = $cv } } catch {}
-        try { [Console]::SetCursorPosition(0, $top + $Rows.Count) } catch {}
     }
 }
 #endregion

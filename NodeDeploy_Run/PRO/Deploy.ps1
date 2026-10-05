@@ -94,6 +94,9 @@
     .NET, Defender... los instala Windows por su cuenta (eran ~30 min de espera sin ver nada).
     NanaZip (DISM) espera a que Windows Update sincronice: mientras busca, DISM se quedaba colgado.
     Menu de dominios: se reserva el sitio antes de dibujar (con la pantalla llena salian lineas repetidas).
+    v5.7.4: menu de dominios: se redibuja contando desde el cursor, no desde una fila guardada (si la ventana
+    cambiaba de tamano, la fila ya no era la del menu y a veces salia "Madrid" dos veces). Barra de tareas: Outlook
+    clasico por su acceso directo del menu Inicio (con el AppID, en un L14 real quedaba anclado el Outlook nuevo).
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -147,7 +150,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.7.3'
+$Script:Version       = '5.7.4'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath

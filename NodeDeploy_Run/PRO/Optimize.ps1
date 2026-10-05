@@ -240,6 +240,15 @@ function Set-TaskbarLayout {
     $teams = if (Get-AppxPackage -AllUsers -Name 'MSTeams' -ErrorAction SilentlyContinue) { 'MSTeams_8wekyb3d8bbwe!MSTeams' }
              elseif (Get-AppxPackage -AllUsers -Name 'MicrosoftTeams' -ErrorAction SilentlyContinue) { 'MicrosoftTeams_8wekyb3d8bbwe!MicrosoftTeams' }
              else { 'MSTeams_8wekyb3d8bbwe!MSTeams' }
+    # Outlook clasico por su acceso directo del menu Inicio (el que abre OUTLOOK.EXE), no por su AppID: con el AppID,
+    # en portatiles reales con usuario del dominio quedaba anclado el Outlook nuevo. Sin acceso directo, el AppID.
+    $outlook = '<taskbar:DesktopApp DesktopApplicationID="Microsoft.Office.OUTLOOK.EXE.15"/>'
+    $progs = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'
+    $wsh = New-Object -ComObject WScript.Shell
+    $lnk = Get-ChildItem -LiteralPath $progs -Filter 'Outlook*.lnk' -ErrorAction SilentlyContinue |
+        Where-Object { "$($wsh.CreateShortcut($_.FullName).TargetPath)" -match '\\OUTLOOK\.EXE$' } |
+        Sort-Object { $_.Name -notmatch 'classic|cl.sico' } | Select-Object -First 1
+    if ($lnk) { $outlook = "<taskbar:DesktopApp DesktopApplicationLinkPath=`"%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\$($lnk.Name)`"/>" }
     $xml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <LayoutModificationTemplate
@@ -253,7 +262,7 @@ function Set-TaskbarLayout {
       <taskbar:TaskbarPinList>
         <taskbar:DesktopApp DesktopApplicationID="Microsoft.Windows.Explorer"/>
         <taskbar:DesktopApp DesktopApplicationID="MSEdge"/>
-        <taskbar:DesktopApp DesktopApplicationID="Microsoft.Office.OUTLOOK.EXE.15"/>
+        $outlook
         <taskbar:UWA AppUserModelID="$teams"/>
       </taskbar:TaskbarPinList>
     </defaultlayout:TaskbarLayout>
@@ -270,7 +279,7 @@ function Set-TaskbarLayout {
     Set-RegValue $k 'LockedStartLayout' 1
     Set-RegValue $k 'StartLayoutFile' $file 'ExpandString'
     Invoke-RegistryFlush
-    return "Explorador, Edge, Outlook clasico y Teams$(if ($teams -like 'MicrosoftTeams*') { ' (personal: no esta el de empresa)' }); sin Microsoft Store. Se aplica al iniciar sesion"
+    return "Explorador, Edge, Outlook clasico$(if ($lnk) { " ($($lnk.Name))" } else { ' (AppID: sin acceso directo)' }) y Teams$(if ($teams -like 'MicrosoftTeams*') { ' (personal: no esta el de empresa)' }); sin Microsoft Store. Se aplica al iniciar sesion"
 }
 
 function Get-OptimizeChecks {
