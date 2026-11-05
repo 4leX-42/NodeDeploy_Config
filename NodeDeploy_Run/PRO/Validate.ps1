@@ -52,7 +52,7 @@ $Script:Checks = @(
     [pscustomobject]@{ App='iManage Work Desktop';  RegKw='iManage Work Desktop';  Svc=$null;             File=@() },
     [pscustomobject]@{ App='MDR Cortex XDR';        RegKw='Cortex XDR';            Svc='cyserver';        File=@() },
     [pscustomobject]@{ App='Bit4id Middleware';     RegKw='Bit4id';                Svc=$null;             File=@("$pf\Bit4id\Universal MW\bin\bit4xpki.exe","$pf86\Bit4id\Universal MW\bin\bit4xpki.exe") },
-    [pscustomobject]@{ App='PDFelement Business';   RegKw='PDFelement';            Svc=$null;             File=@("$pf\Wondershare\PDFelement\PDFelement.exe","$pf86\Wondershare\PDFelement\PDFelement.exe") },
+    [pscustomobject]@{ App='PDFelement Business';   RegKw='PDFelement';            Svc=$null;             File=@("$pf\Wondershare\PDFelement*\PDFelement.exe","$pf86\Wondershare\PDFelement*\PDFelement.exe") },
     [pscustomobject]@{ App='Autofirma';             RegKw='Autofirma';             Svc=$null;             File=@("$pf\Autofirma\Autofirma\Autofirma.exe","$pf\AutoFirma\AutoFirma.exe") },
     [pscustomobject]@{ App='dnGrep';                RegKw='dnGrep';                Svc=$null;             File=@("$pf\dnGREP\dnGREP.exe") },
     [pscustomobject]@{ App='Everything';            RegKw='Everything';            Svc='Everything';      File=@("$pf\Everything\Everything.exe") },

@@ -197,6 +197,7 @@ Los parámetros extra se pasan tal cual a `Deploy.ps1` (`Deploy.bat full -SkipAV
 | `-NoFinalize` | Sin preguntas ni cierre del equipo (laboratorio / pruebas). |
 | `-NoOptimize` | Sin optimización de Windows (`Optimize.ps1`: limpieza de apps, publicidad, arranque, barra de tareas, TRIM). |
 | `-NoLenovoUpdates` | Sin actualizaciones de Lenovo (`Lenovo.ps1`). |
+| `-NoMcAfee` | En los LG, no quita el McAfee de fábrica (`Quitar-McAfee-LG.ps1`). |
 | `-NoWindowsUpdate` | Sin actualizaciones de Windows Update (`WindowsUpdate.ps1`). |
 | `-NoAutoReboot` | Sin reinicio automático ni vigilante (laboratorio / pruebas). |
 | `-KeepFolder` | No borra la carpeta del escritorio al terminar. |

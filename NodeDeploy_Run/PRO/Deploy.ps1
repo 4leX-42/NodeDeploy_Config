@@ -97,6 +97,25 @@
     v5.7.4: menu de dominios: se redibuja contando desde el cursor, no desde una fila guardada (si la ventana
     cambiaba de tamano, la fila ya no era la del menu y a veces salia "Madrid" dos veces). Barra de tareas: Outlook
     clasico por su acceso directo del menu Inicio (con el AppID, en un L14 real quedaba anclado el Outlook nuevo).
+    v5.7.5: Cortex por arquitectura (MDR_Windows_*_x64.msi / *_arm64.msi): en ARM64 (Surface Pro 11) el x64 se
+    colgaba reintentando arrancar sus drivers (0x800704fb). MSI sin Restart Manager (cerraba la consola a mitad).
+    Reloj corregido desde 10 s de desfase. Copia de la consola en logs\Deploy_*_consola.txt; Deploy.bat espera a
+    una tecla si no hay reinicio automatico. Cierre: la cuenta estandar queda en Usuarios al salir de Administradores.
+    Apps por arquitectura (FileArm64 / OnlyArch, ver el catalogo). Logs al Escritorio, carpeta LOGS_ERRORES: siempre
+    que haya errores y tambien si la ejecucion se corta (Save-ErrorLogs.ps1, con los eventos de Windows de esos
+    minutos), desde Deploy.bat al salir o, si se cerro la ventana, desde la siguiente ejecucion.
+    v5.7.6: LG: el McAfee de fabrica (WPS, WebAdvisor, app de la Store) se desinstala tras PRE-CHECKS, antes de
+    instalar ESET/Cortex (Quitar-McAfee-LG.ps1, sin reiniciar; max. 20 min). -NoMcAfee lo omite. Si se quito
+    algo, cuenta como motivo de reinicio.
+    Reinicio que no llegaba en Samsung/LG: Windows Update instala controladores max. 60 min (para entre uno y otro;
+    el resto lo pone Windows) y el vigilante le pide parar a los 90 min, asi no se agotan sus 4 h sin reiniciar.
+    Fuera controladoras de disco de servidor que Windows Update ofrece por error (Areca en un LG gram).
+    Todo shutdown.exe comprueba su codigo: reintento (/a + /f) y si no, tarea de SYSTEM a 2 min y nota en el
+    Escritorio (LOGS_ERRORES). Con carpeta a borrar: primero se programa el reinicio y despues se borra (la tarea de
+    borrado al arrancar queda puesta ANTES de empezar). Los logs de ProgramData\NodeDeploy van en el zip.
+    v5.7.7: Cortex XDR no se instala con la bateria baja (Error 29002): aviso "SIN CARGADOR" en PRE-CHECKS y, si
+    falla por eso, se reintenta cada 30 s hasta 10 min esperando al cargador; si no, fallo con el motivo claro.
+    PDFelement 10 se detecta en Wondershare\PDFelement10 (antes, "colgado" en FileAssociation contaba como fallo).
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -133,6 +152,7 @@ param(
     [switch]$NoFinalize,                 # sin preguntas ni cierre (laboratorio / reintentos)
     [switch]$NoOptimize,                 # sin optimizacion de Windows (Optimize.ps1)
     [switch]$NoLenovoUpdates,            # sin actualizaciones de Lenovo (Lenovo.ps1)
+    [switch]$NoMcAfee,                   # no quitar el McAfee de fabrica en los LG (Quitar-McAfee-LG.ps1)
     [switch]$NoBIOS,                     # actualizaciones de Lenovo sin firmware/BIOS
     [string]$TimeZone = 'Romance Standard Time',  # zona horaria si la del equipo no es de Espana; 'no' = no tocar la hora
     [switch]$NoWindowsUpdate,            # sin actualizaciones de Windows Update (WindowsUpdate.ps1)
@@ -150,7 +170,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.7.4'
+$Script:Version       = '5.7.7'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -158,7 +178,46 @@ $Script:DefaultSource = Resolve-Path (Join-Path $Script:ScriptDir '..\..\1.Node_
 $Script:DefaultState  = Join-Path (Split-Path -Parent $Script:ScriptDir) 'state'
 $Script:OfficeAppName = 'Outlook clasico'
 $Script:MsiExec       = Join-Path $env:SystemRoot 'System32\msiexec.exe'
+# Sin Restart Manager: en silencio cierra por su cuenta lo que tenga ficheros del instalador en uso, y eso incluye
+# la consola del script (se cerraba a mitad sin dejar nada en el log, oct-2026). Lo que este en uso se sustituye
+# al reiniciar, que el despliegue hace igualmente. Office lo cierra el script antes cuando hace falta (CloseOffice).
+$Script:MsiNoRM       = 'MSIRESTARTMANAGERCONTROL=Disable'
+# Logs de las ejecuciones con errores o cortadas: en el Escritorio del equipo que se prepara
+$Script:ErrorLogDir   = Join-Path ([Environment]::GetFolderPath('Desktop')) 'LOGS_ERRORES'
+# Marca para Deploy.bat: Deploy.ps1 arranco y, o ya hay log, o el fallo quedo anotado (Write-EarlyFatal). Sin ella,
+# Deploy.bat anota por su cuenta (parametro mal escrito, error de sintaxis: el script ni llega a ejecutarse).
+$Script:StartFlag     = Join-Path $env:TEMP 'NodeDeploy_inicio.flag'
+$Script:LaunchParams  = @($PSBoundParameters.GetEnumerator() | ForEach-Object { "-$($_.Key) $(@($_.Value) -join ',')" }) -join ' '
+
+function Write-EarlyFatal {
+    # Fallo antes de que exista el log (sin admin, sin origen, state sin permisos): lo anota en el Escritorio,
+    # LOGS_ERRORES\<equipo>_ARRANQUE.txt (un bloque por fallo; Deploy.bat escribe en el mismo fichero) y sale.
+    param([string]$Message, [int]$Code)
+    Write-Host "[FATAL] $Message" -ForegroundColor Red
+    $note = Join-Path $Script:ErrorLogDir "$($env:COMPUTERNAME)_ARRANQUE.txt"
+    try {
+        $id      = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $isAdmin = (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        New-Item -ItemType Directory -Force -Path $Script:ErrorLogDir -ErrorAction Stop | Out-Null
+        @('',
+          "==== $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | Deploy.ps1 $Script:Version | exit $Code",
+          "Fallo     : $Message",
+          "Usuario   : $($id.Name) | administrador: $isAdmin",
+          "Script    : $PSCommandPath",
+          "Source    : $Source",
+          "StatePath : $StatePath",
+          "Parametros: $Script:LaunchParams",
+          "PowerShell: $($PSVersionTable.PSVersion) | $([Environment]::OSVersion.VersionString)"
+        ) | Add-Content -LiteralPath $note -Encoding Default -ErrorAction Stop
+        Write-Host "[INFO] Anotado en: $note"
+    } catch { Write-Host "[WARN] No se pudo anotar en $note : $($_.Exception.Message)" -ForegroundColor Yellow }
+    try { Set-Content -LiteralPath $Script:StartFlag -Value $note -ErrorAction Stop } catch {}
+    exit $Code
+}
 $Script:AVApps        = @('ESET Management Agent','MDR Cortex XDR')
+# Arquitectura del procesador, no la del proceso (12 = ARM64). Los Surface Pro 11 son ARM64: los programas x64 van
+# emulados, pero un driver x64 no carga (el MSI de Cortex x64 se queda reintentando arrancar sus drivers, oct-2026).
+$Script:IsArm64       = [bool]((Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1).Architecture -eq 12)
 if ($env:NODEDEPLOY_SERIAL -eq '1') { $Serial = $true }
 
 if (-not $Source)    { $Source    = $Script:DefaultSource }
@@ -169,17 +228,18 @@ if ($SkipAV)         { $SkipApps  = @($SkipApps) + $Script:AVApps | Select-Objec
 
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $DryRun -and -not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host '[FATAL] Requiere permisos de Administrador. Lanza desde Deploy.bat.' -ForegroundColor Red
-    exit 4
+    Write-EarlyFatal 'Requiere permisos de Administrador. Lanza desde Deploy.bat.' 4
 }
 if (-not $Source -or -not (Test-Path $Source)) {
-    Write-Host "[FATAL] Source no existe: $Source" -ForegroundColor Red
-    exit 2
+    Write-EarlyFatal "Source no existe: $Source (falta la carpeta 1.Node_Preparation al lado de NodeDeploy_Run?)" 2
 }
 $Source = (Convert-Path $Source)
 
 foreach ($d in @($StatePath, (Join-Path $StatePath 'logs'), (Join-Path $StatePath 'reports'))) {
-    if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+    if (-not (Test-Path $d)) {
+        try { New-Item -ItemType Directory -Path $d -Force -ErrorAction Stop | Out-Null }
+        catch { Write-EarlyFatal "No se puede crear $d : $($_.Exception.Message)" 2 }
+    }
 }
 $Script:StatePath = (Convert-Path $StatePath)
 $Script:LogDir    = Join-Path $Script:StatePath 'logs'
@@ -192,6 +252,9 @@ Remove-Item -LiteralPath $Script:AutoRebootFlag, (Join-Path $Script:StatePath 'b
 $Script:MonitorDir = Join-Path $env:ProgramData 'NodeDeploy'; $Script:MonitorStarted = $false
 Remove-Item -LiteralPath (Join-Path $Script:MonitorDir 'borrar_carpeta.flag') -Force -ErrorAction SilentlyContinue
 $Script:LogFile   = Join-Path $Script:LogDir ('Deploy_{0}.log' -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
+# Copia de la consola: si el script muere por un error no controlado, el mensaje rojo queda aqui (el log no lo ve).
+try { Start-Transcript -LiteralPath ($Script:LogFile -replace '\.log$', '_consola.txt') -Force | Out-Null } catch {}
+try { Set-Content -LiteralPath $Script:StartFlag -Value $Script:LogFile -ErrorAction Stop } catch {}
 
 if ($PSVersionTable.PSVersion.Major -lt 5) {
     Write-Host "[FATAL] PowerShell 5.0+ requerido (actual: $($PSVersionTable.PSVersion))" -ForegroundColor Red
@@ -269,17 +332,43 @@ function Set-ClockAndTimeZone {
             $out += "zona $TimeZone (antes $($tz.Id))"
         } else { $out += "zona $($tz.Id)" }
     } catch { $out += "zona: ERROR $($_.Exception.Message)" }
-    $web = $null; $src = $null
-    foreach ($u in 'http://www.msftconnecttest.com/connecttest.txt', 'http://www.google.com/generate_204') {
-        try {
-            $r = Invoke-WebRequest -Uri $u -Method Head -UseBasicParsing -TimeoutSec 8 -ErrorAction Stop
-            $d = "$($r.Headers['Date'])"
-            if ($d) { $web = [DateTimeOffset]::Parse($d, [Globalization.CultureInfo]::InvariantCulture).UtcDateTime; $src = ([uri]$u).Host; break }
-        } catch {}
+    # Hora de confianza: varias fuentes independientes, HTTPS preferido y HTTP de respaldo (con el reloj muy mal el
+    # TLS falla -y es justo cuando hace falta ajustar-, por eso no se puede exigir solo HTTPS). No se ajusta con una
+    # sola fuente: se exige que al menos dos coincidan (<= 30 s) antes de tocar el reloj, asi un MITM tendria que
+    # falsear todas a la vez. La cabecera Date no depende del reloj local.
+    $timeHosts = @(
+        @{ H = 'msftconnecttest.com'; U = 'https://www.msftconnecttest.com/connecttest.txt', 'http://www.msftconnecttest.com/connecttest.txt' },
+        @{ H = 'google.com';          U = 'https://www.google.com/generate_204', 'http://www.google.com/generate_204' },
+        @{ H = 'cloudflare.com';      U = 'https://www.cloudflare.com/cdn-cgi/trace', 'http://www.cloudflare.com/cdn-cgi/trace' }
+    )
+    $times = @()
+    foreach ($th in $timeHosts) {
+        foreach ($u in $th.U) {
+            try {
+                $r = Invoke-WebRequest -Uri $u -Method Head -UseBasicParsing -TimeoutSec 8 -ErrorAction Stop
+                $d = "$($r.Headers['Date'])"
+                if ($d) { $times += [pscustomobject]@{ Host = $th.H; Utc = [DateTimeOffset]::Parse($d, [Globalization.CultureInfo]::InvariantCulture).UtcDateTime }; break }
+            } catch {}
+        }
     }
+    $web = $null; $src = $null
+    if (@($times).Count -ge 2) {
+        $sorted = @($times | ForEach-Object { $_.Utc } | Sort-Object)
+        $span = [int]($sorted[-1] - $sorted[0]).TotalSeconds
+        if ($span -le 30) {
+            $avg = [long](($times | ForEach-Object { $_.Utc.Ticks } | Measure-Object -Sum).Sum / @($times).Count)
+            $cand = [DateTime]::new($avg, [DateTimeKind]::Utc)
+            if ($cand.Year -ge 2024 -and $cand.Year -le ([DateTime]::UtcNow.Year + 5)) { $web = $cand; $src = (@($times | ForEach-Object { $_.Host }) -join '+') }
+            else { $out += 'reloj: la hora de la red no es razonable, no se ajusta' }
+        } else { $out += "reloj: las fuentes de hora no coinciden ($span s), no se ajusta (posible manipulacion)" }
+    } elseif (@($times).Count -eq 1) {
+        $out += 'reloj: una sola fuente de hora, no se ajusta (hace falta que coincidan varias)'
+    } else { $out += 'reloj: sin conexion para comprobarlo' }
     if ($web) {
         $off = [int]($web - [DateTime]::UtcNow).TotalSeconds
-        if ([math]::Abs($off) -gt 120) {
+        # Desde 10 s: con 120 s de margen el reloj se quedaba adelantado y el w32tm /resync de abajo lo atrasaba con
+        # las apps ya en marcha (duraciones negativas en el log, oct-2026).
+        if ([math]::Abs($off) -gt 10) {
             $s = [TimeSpan]::FromSeconds([math]::Abs($off))
             $txt = if ($s.TotalDays -ge 1) { '{0} d {1} h' -f [int][math]::Floor($s.TotalDays), $s.Hours } elseif ($s.TotalHours -ge 1) { '{0} h {1} min' -f [int][math]::Floor($s.TotalHours), $s.Minutes } else { '{0} min' -f [int][math]::Ceiling($s.TotalMinutes) }
             try {
@@ -287,7 +376,7 @@ function Set-ClockAndTimeZone {
                 $out += "reloj corregido: iba $(if ($off -gt 0) { 'atrasado' } else { 'adelantado' }) $txt (hora de $src)"
             } catch { $out += "reloj: ERROR $($_.Exception.Message)" }
         } else { $out += "reloj en hora ($src)" }
-    } else { $out += 'reloj: sin conexion para comprobarlo' }
+    }
     # Sincronizacion automatica de Windows (en el dominio pasa a sincronizar con el controlador)
     try {
         Set-Service -Name W32Time -StartupType Automatic -ErrorAction Stop
@@ -295,6 +384,45 @@ function Set-ClockAndTimeZone {
         & w32tm.exe /resync /nowait 2>&1 | Out-Null
     } catch { $out += "W32Time: $($_.Exception.Message)" }
     return ($out -join '; ')
+}
+
+function Protect-NodeDir {
+    # Crea (o asegura) una carpeta de la que luego se copian y ejecutan scripts como admin/SYSTEM, con ACL explicita:
+    # solo SYSTEM y Administradores, sin herencia. %ProgramData% deja a los Usuarios crear carpetas, asi que un no-admin
+    # podria pre-crear la carpeta (quedando de dueno) y cambiar los .ps1 entre la copia y el lanzamiento (planting/TOCTOU).
+    # Si ya existe y NO pertenece a SYSTEM/Administradores (o es un reparse point), se borra y se recrea.
+    # El borrado es 'cmd rd /s /q' entre comillas, que NO sigue junctions/symlinks (medido) ni en la raiz ni en los
+    # hijos: asi un atacante no puede colar un junction para que el borrado privilegiado destruya otra ruta. Si NO es
+    # reparse point, se toma posesion y se cierra el ACL ANTES de borrar, para que no pueda colarlo durante la limpieza.
+    # No es critico: nunca frena el despliegue.
+    param([string]$Path)
+    try {
+        $adm = New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-544'
+        if (Test-Path -LiteralPath $Path) {
+            $isReparse = [bool]((Get-Item -LiteralPath $Path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)
+            $ownSid = (Get-Acl -LiteralPath $Path).GetOwner([Security.Principal.SecurityIdentifier]).Value
+            if ($isReparse -or $ownSid -notin 'S-1-5-18', 'S-1-5-32-544') {
+                if (-not $isReparse) {
+                    try {
+                        $o = Get-Acl -LiteralPath $Path; $o.SetOwner($adm); Set-Acl -LiteralPath $Path -AclObject $o -ErrorAction Stop
+                        $lk = New-Object Security.AccessControl.DirectorySecurity; $lk.SetAccessRuleProtection($true, $false)
+                        foreach ($s in 'S-1-5-18', 'S-1-5-32-544') { $lk.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule((New-Object Security.Principal.SecurityIdentifier $s), 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))) }
+                        Set-Acl -LiteralPath $Path -AclObject $lk -ErrorAction Stop
+                    } catch {}
+                }
+                & cmd.exe /c "rd /s /q `"$Path`"" 2>$null | Out-Null
+            }
+        }
+        if (-not (Test-Path -LiteralPath $Path)) { New-Item -ItemType Directory -Force -Path $Path -ErrorAction Stop | Out-Null }
+        $acl = New-Object Security.AccessControl.DirectorySecurity
+        $acl.SetAccessRuleProtection($true, $false)   # sin herencia, sin copiar las ACE heredadas
+        foreach ($sid in 'S-1-5-18', 'S-1-5-32-544') {
+            $id = New-Object Security.Principal.SecurityIdentifier $sid
+            $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($id, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+        }
+        $acl.SetOwner($adm)
+        Set-Acl -LiteralPath $Path -AclObject $acl -ErrorAction Stop
+    } catch {}
 }
 
 function Get-LocalSetting {
@@ -318,8 +446,9 @@ function Test-TcpPort {
 function Save-RunLogs {
     # Zip con los logs de esta ejecucion (informe, Deploy_*.log, logs de instaladores, resultados de Lenovo y Windows
     # Update, estado y datos del equipo) a la carpeta de red LogShare (Ajustes.local.txt), en NodeDeploy_Success o
-    # NodeDeploy_Errors, con las credenciales del dominio si se dieron. Sin red o si falla: en LOGS_preparation, al
-    # lado de la carpeta de NodeDeploy. No es critico: nunca para nada ni cuenta como fallo.
+    # NodeDeploy_Errors, con las credenciales del dominio si se dieron. Con errores, ademas, siempre en el Escritorio
+    # (LOGS_ERRORES). Sin red y sin errores: en LOGS_preparation, al lado de la carpeta de NodeDeploy.
+    # No es critico: nunca para nada ni cuenta como fallo.
     param([bool]$HasErrors, $Credential, [string]$ReportFile, [string]$Summary)
     $sub  = if ($HasErrors) { 'NodeDeploy_Errors' } else { 'NodeDeploy_Success' }
     $note = $null
@@ -337,13 +466,36 @@ function Save-RunLogs {
         }
         $st = Join-Path $Script:StatePath 'nodedeploy_state.json'
         if (Test-Path -LiteralPath $st) { Copy-Item -LiteralPath $st -Destination $tmp -Force }
-        @("Equipo   : $env:COMPUTERNAME | $($cs.Manufacturer) $($cs.SystemFamily) $($cs.Model) | n/s $($bios.SerialNumber) | BIOS $($bios.SMBIOSBIOSVersion)",
+        # Lo que paso DESPUES de subir los logs la vez anterior (vigilante, borrado de carpeta, reinicio): solo queda
+        # en ProgramData\NodeDeploy. Se adjunta para ver por que un equipo no reinicio.
+        $pdLogs = @(Get-ChildItem -LiteralPath $Script:MonitorDir -Filter '*.log' -File -ErrorAction SilentlyContinue)
+        if ($pdLogs) {
+            New-Item -ItemType Directory -Force -Path (Join-Path $tmp 'programdata') | Out-Null
+            $pdLogs | ForEach-Object { try { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $tmp 'programdata') -Force -ErrorAction Stop } catch {} }
+        }
+        $equipoLines = @(
+          "Equipo   : $env:COMPUTERNAME | $($cs.Manufacturer) $($cs.SystemFamily) $($cs.Model) | n/s $($bios.SerialNumber) | BIOS $($bios.SMBIOSBIOSVersion)",
           "Windows  : $($os.Caption) $($os.Version) build $([Environment]::OSVersion.Version.Build).$((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction SilentlyContinue).UBR)",
           "NodeDeploy $($Script:Version) | fase $Phase | inicio $($Script:StartTime.ToString('yyyy-MM-dd HH:mm')) | $(Format-Duration (Get-Elapsed))",
-          "Resultado: $Summary") | Set-Content -LiteralPath (Join-Path $tmp 'equipo.txt') -Encoding UTF8
+          "Resultado: $Summary")
+        $equipoLines | Set-Content -LiteralPath (Join-Path $tmp 'equipo.txt') -Encoding UTF8
+        # .txt suelto de vistazo rapido (cabecera + Atencion + tabla de apps en texto plano), al lado del zip:
+        # para abrirlo y ver que paso sin tener que descomprimir. El detalle completo sigue dentro del zip.
+        $txtFile  = Join-Path $env:TEMP "$name.txt"
+        $quickTxt = if ($Script:QuickBody) { @($equipoLines) + '' + @($Script:QuickBody -split "`r?`n") } else { $equipoLines }
+        $quickTxt | Set-Content -LiteralPath $txtFile -Encoding UTF8
         $zip = Join-Path $env:TEMP "$name.zip"
         Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $zip -Force -ErrorAction Stop
-        $dest  = $null
+        $dest  = @()
+        if ($HasErrors) {
+            # Con errores, siempre una copia en el Escritorio (LOGS_ERRORES), a mano del tecnico aunque haya red
+            try {
+                New-Item -ItemType Directory -Force -Path $Script:ErrorLogDir -ErrorAction Stop | Out-Null
+                Copy-Item -LiteralPath $zip -Destination $Script:ErrorLogDir -Force -ErrorAction Stop
+                Copy-Item -LiteralPath $txtFile -Destination $Script:ErrorLogDir -Force -ErrorAction SilentlyContinue
+                $dest += Join-Path $Script:ErrorLogDir "$name.zip"
+            } catch { $note = "Escritorio: $($_.Exception.Message)" }
+        }
         $share = Get-LocalSetting 'LogShare'
         if ($share -and $share -match '^\\\\([^\\]+)\\') {
             if (Test-TcpPort -HostName $matches[1]) {
@@ -353,21 +505,24 @@ function Save-RunLogs {
                     $target = Join-Path $base $sub
                     if (-not (Test-Path -LiteralPath $target)) { New-Item -ItemType Directory -Force -Path $target -ErrorAction Stop | Out-Null }
                     Copy-Item -LiteralPath $zip -Destination $target -Force -ErrorAction Stop
-                    $dest = Join-Path (Join-Path $share $sub) "$name.zip"
-                } catch { $note = "carpeta de red: $($_.Exception.Message)" }
+                    Copy-Item -LiteralPath $txtFile -Destination $target -Force -ErrorAction SilentlyContinue
+                    $dest += Join-Path (Join-Path $share $sub) "$name.zip"
+                } catch { $note = (@($note) + "carpeta de red: $($_.Exception.Message)" | Where-Object { $_ }) -join '; ' }
                 finally { Remove-PSDrive -Name NDLOGS -Force -ErrorAction SilentlyContinue }
-            } else { $note = "sin acceso a $($matches[1])" }
+            } else { $note = (@($note) + "sin acceso a $($matches[1])" | Where-Object { $_ }) -join '; ' }
         }
         if (-not $dest) {
             $root  = Split-Path -Parent (Split-Path -Parent $Script:ScriptDir)
             $local = Join-Path (Split-Path -Parent $root) "LOGS_preparation\$sub"
             New-Item -ItemType Directory -Force -Path $local | Out-Null
             Copy-Item -LiteralPath $zip -Destination $local -Force
-            $dest = Join-Path $local "$name.zip"
+            Copy-Item -LiteralPath $txtFile -Destination $local -Force -ErrorAction SilentlyContinue
+            $dest += Join-Path $local "$name.zip"
         }
         Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
-        return "$dest$(if ($note) { " ($note)" })"
+        Remove-Item -LiteralPath $txtFile -Force -ErrorAction SilentlyContinue
+        return "$($dest -join ' + ')$(if ($note) { " ($note)" })"
     } catch { return "no se pudieron guardar: $($_.Exception.Message)" }
 }
 
@@ -731,6 +886,10 @@ $pdf24Policy = [ordered]@{
 }
 if ($Script:HasWebView2) { $pdf24Policy['!webview2.useEvergreen'] = 1 }
 
+# Arquitectura (equipos ARM64 como los Surface Pro 11, frente a x64 Intel/AMD):
+#   FileArm64='patron'  instalador propio para ARM64; en ARM64 se usa ese y, si falta, la app falla (el x64 no se prueba)
+#   OnlyArch='x64'|'ARM64'  la app solo se instala en esa arquitectura; en la otra queda saltada, sin contar como fallo
+#   Sin ninguno: el mismo instalador en las dos (en ARM64, los programas x64 van emulados; los drivers x64 no cargan).
 $Script:Apps = @(
     # ---------- Outlook clasico (background desde t=0) ----------
     [pscustomobject]@{
@@ -841,7 +1000,9 @@ $Script:Apps = @(
     },
     [pscustomobject]@{
         # Siempre el ultimo: su monitor de comportamiento bloquea el runtime InstallScript de iManage.
-        Name='MDR Cortex XDR'; File='MDR_Windows_Andersen_8_2_x64.msi'; Type='msi'; Lane='msi'; Order=999; Timeout=120
+        # Instalador por arquitectura (comodin: para actualizar basta con sustituir el .msi). Sin el de ARM64 en un
+        # equipo ARM64 queda [MISS] en vez de lanzar el x64, que se cuelga sin poder arrancar sus drivers.
+        Name='MDR Cortex XDR'; File='MDR_Windows_*_x64.msi'; FileArm64='MDR_Windows_*_arm64.msi'; Type='msi'; Lane='msi'; Order=999; Timeout=120
         AfterAll=$true; MsiExtra='REBOOT=ReallySuppress'
         Detect=@('Cortex XDR','Palo Alto','Traps'); ServiceNames=@('cyserver','CyveraService')
     },
@@ -860,7 +1021,8 @@ $Script:Apps = @(
         Name='PDFelement Business'; File=$pdfExe; Type='inno'; Lane='exe'; Order=20; Timeout=180
         Args='/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOPAGE /NOCANCEL /CLOSEAPPLICATIONS'
         Detect=@('PDFelement','Wondershare PDFelement')
-        FilePaths=@("$env:ProgramFiles\Wondershare\PDFelement\PDFelement.exe","${env:ProgramFiles(x86)}\Wondershare\PDFelement\PDFelement.exe")
+        # PDFelement* : la v10 se instala en ...\Wondershare\PDFelement10\ (sin comodin no se detectaba tras colgarse)
+        FilePaths=@("$env:ProgramFiles\Wondershare\PDFelement*\PDFelement.exe","${env:ProgramFiles(x86)}\Wondershare\PDFelement*\PDFelement.exe")
         KillOnTimeout=@('PDFelement','wshelper','WsAppService')
         Boost=@{ Processes=@($pdfExe, [IO.Path]::ChangeExtension($pdfExe, '.tmp')); Paths=@("$env:ProgramFiles\Wondershare","${env:ProgramFiles(x86)}\Wondershare") }
     },
@@ -902,6 +1064,8 @@ if (Test-Path $Script:OptimizePs1) { . $Script:OptimizePs1 }
 function Resolve-AppPath {
     param($App)
     $rel  = if ($App.Path) { $App.Path } else { $App.File }
+    # Instalador propio para ARM64 (FileArm64): en un equipo ARM64 se usa ese y nunca el x64
+    if ($Script:IsArm64 -and $App.FileArm64) { $rel = $App.FileArm64 }
     $full = Join-Path $Source $rel
     if ($rel -match '[\*\?]') {
         # Nombre con comodin (p. ej. pdf24-creator-*-x64.msi): para actualizar basta con sustituir el
@@ -910,6 +1074,14 @@ function Resolve-AppPath {
         if ($hit) { return $hit.FullName }
     }
     return $full
+}
+
+function Get-ArchName { if ($Script:IsArm64) { 'ARM64' } else { 'x64' } }
+
+function Test-AppArch {
+    # App solo para una arquitectura (OnlyArch = 'x64' | 'ARM64'); sin OnlyArch vale para las dos
+    param($App)
+    return (-not $App.OnlyArch -or $App.OnlyArch -eq (Get-ArchName))
 }
 
 function Resolve-AppDefinition {
@@ -921,6 +1093,7 @@ function Resolve-AppDefinition {
     $clone = $App.PSObject.Copy()
     foreach ($p in $fb.PSObject.Properties) { $clone | Add-Member -NotePropertyName $p.Name -NotePropertyValue $p.Value -Force }
     $clone | Add-Member -NotePropertyName 'Path' -NotePropertyValue $null -Force
+    $clone | Add-Member -NotePropertyName 'FileArm64' -NotePropertyValue $null -Force
     $clone | Add-Member -NotePropertyName 'UsingFallback' -NotePropertyValue $true -Force
     return $clone
 }
@@ -931,11 +1104,13 @@ function Get-AutoRebootDecision {
     # Why = lo que lo impide, solo dos cosas: actualizaciones aun instalandose (lo recoge el vigilante) o un dominio
     #       pedido que aun no esta unido (el dominio va siempre antes del reinicio).
     # Warn = avisos que NO frenan el reinicio (app con fallo, cierre pospuesto): se apuntan en el informe.
-    param($Records, $FinalizeStatus, [bool]$DomainWanted, $LenovoResult, $WuResult, [bool]$WindowsPending, [bool]$UpdatesRunning)
+    param($Records, $FinalizeStatus, [bool]$DomainWanted, $LenovoResult, $WuResult, [bool]$WindowsPending, [bool]$UpdatesRunning,
+          [bool]$McAfeeRemoved)
     $fs = $FinalizeStatus
     $lnPend = @(if ($LenovoResult) { $LenovoResult.pending })
     $need = @()
     if ($fs -and $fs.DomainJoined)          { $need += 'union al dominio' }
+    if ($McAfeeRemoved)                     { $need += 'McAfee desinstalado' }
     if ($lnPend -match 'REBOOT|SHUTDOWN')   { $need += 'actualizaciones de Lenovo' }
     if ($WuResult -and $WuResult.reboot)    { $need += 'Windows Update' }
     if (@($Records | Where-Object { $_.status -eq 'ok_reboot' }).Count) { $need += 'instaladores' }
@@ -1224,7 +1399,7 @@ function New-InstallCommand {
         'msi' {
             $cmd.LogFile   = Join-Path $Script:LogDir "msi_$name.log"
             $cmd.FilePath  = $Script:MsiExec
-            $cmd.Arguments = "/i `"$file`" /qn /norestart /l*v `"$($cmd.LogFile)`" $($App.MsiExtra)".Trim()
+            $cmd.Arguments = "/i `"$file`" /qn /norestart /l*v `"$($cmd.LogFile)`" $Script:MsiNoRM $($App.MsiExtra)".Trim()
         }
         'msi-eset' {
             $cmd.LogFile = Join-Path $Script:LogDir "msi_$name.log"
@@ -1234,7 +1409,7 @@ function New-InstallCommand {
                 'P_INSTALL_MODE=1'
             }
             $cmd.FilePath  = $Script:MsiExec
-            $cmd.Arguments = "/i `"$file`" /qn /norestart /l*v `"$($cmd.LogFile)`" $extra"
+            $cmd.Arguments = "/i `"$file`" /qn /norestart /l*v `"$($cmd.LogFile)`" $Script:MsiNoRM $extra"
         }
         'exe' {
             $cmd.Arguments = "$($App.Args)"
@@ -1257,7 +1432,7 @@ function New-InstallCommand {
             # /s silent, /SMS espera al msiexec hijo, /v"..." se pasa al MSI interno.
             $cmd.LogFile = Join-Path $Script:LogDir "is_$name.log"
             $extra = if ($App.MsiExtra) { $App.MsiExtra } else { 'REBOOT=ReallySuppress' }
-            $cmd.Arguments = "/s /SMS /v`"/qn /l*v \`"$($cmd.LogFile)\`" $extra`""
+            $cmd.Arguments = "/s /SMS /v`"/qn /l*v \`"$($cmd.LogFile)\`" $Script:MsiNoRM $extra`""
         }
         'burn' {
             $cmd.LogFile   = Join-Path $Script:LogDir "burn_$name.log"
@@ -1605,6 +1780,16 @@ Get-Process msiexec -ErrorAction SilentlyContinue | ForEach-Object { [void][N.F]
     return @{ Entry = $Entry; Job = $job }
 }
 
+function Get-PowerState {
+    # OnAC: cargador conectado (sin bateria = sobremesa / VM: cuenta como conectado). Text: resumen para el log.
+    $pct = $null; $ac = $null; $has = $false; $w = @()
+    try { $w = @(Get-CimInstance Win32_Battery -ErrorAction Stop); if ($w.Count) { $has = $true; $pct = [int]($w | Measure-Object EstimatedChargeRemaining -Average).Average } } catch {}
+    try { $b = Get-CimInstance -Namespace root\wmi -ClassName BatteryStatus -ErrorAction Stop | Select-Object -First 1; if ($null -ne $b) { $has = $true; $ac = [bool]$b.PowerOnline } } catch {}
+    if ($null -eq $ac) { $ac = if ($has) { [bool](@($w | Where-Object { $_.BatteryStatus -in 2,6,7,8,9 }).Count) } else { $true } }
+    $txt = if (-not $has) { 'sin bateria' } else { "bateria $(if ($null -ne $pct) { "$pct %" } else { '?' }), $(if ($ac) { 'con cargador' } else { 'SIN cargador' })" }
+    return @{ HasBattery = $has; OnAC = $ac; Percent = $pct; Text = $txt }
+}
+
 function Get-RetryDelay {
     # $null = no reintentar: se apunta el fallo y se sigue con las demas. 1618 (MSI ocupado) espera y no gasta
     # intentos. Colgado (timeout): no se reintenta, se colgaria igual (en campo: 3 x 15 min perdidos). Fallo rapido
@@ -1675,6 +1860,11 @@ function Complete-AppJob {
             if ($check.Installed -or $code -notin 0,3010,1641) { break }
             Start-Sleep -Seconds 2
         }
+    } elseif ($TimedOut) {
+        # Colgado: el instalador se corto en un paso posterior, pero la app puede haber quedado instalada
+        # (p. ej. PDFelement se cuelga en el [Run] FileAssociation DESPUES de escribir el alta en el registro).
+        # Si el registro/ficheros la detectan, no es un fallo duro: cuenta como instalada sin confirmar.
+        $check = Test-AppInstalled -App $app -Refresh
     }
 
     $rec.exit_code = $code; $rec.timed_out = $TimedOut; $rec.elapsed_sec = $sec
@@ -1684,12 +1874,13 @@ function Complete-AppJob {
     $tag = if ($Serial) { 'SER' } else { $app.Lane.ToUpper() }
 
     if ($check.Installed) {
-        $rec.status = if ($code -in 3010,1641) { 'ok_reboot' } else { 'ok' }
+        $rec.status = if ($code -in 3010,1641) { 'ok_reboot' } elseif ($TimedOut) { 'ok_unverified' } else { 'ok' }
         if ($code -in 3010,1641) { $State.reboot_required = $true; $rec.errors += "reboot_required:$code" }
+        elseif ($TimedOut) { $rec.errors += 'colgado_pero_detectado_instalado' }   # la revalidacion final lo promociona a ok si sigue
         else { $rec.errors = @() }
         $rec.finished = (Get-Date -Format 'o')
         Set-AppRecord $State $app.Name $rec
-        Write-Log ("[{0}] OK   {1} ({2}s) [{3}]" -f $tag, $app.Name, $sec, ($check.Evidence -join ', ')) 'OK'
+        Write-Log ("[{0}] {1} {2} ({3}s) [{4}]" -f $tag, $(if ($TimedOut) { 'OK? ' } else { 'OK  ' }), $app.Name, $sec, ($check.Evidence -join ', ')) $(if ($TimedOut) { 'WARN' } else { 'OK' })
         return $null
     }
     if ($code -in 3010,1641) {
@@ -1712,6 +1903,21 @@ function Complete-AppJob {
         foreach ($m in (Get-IManageSetupErrors -Since $Job.StartedAt -Tag ($app.Name -replace '\s','') -WorkDir $Job.WorkDir)) {
             if ($rec.errors -notcontains "imanage:$m") { $rec.errors += "imanage:$m" }
         }
+    }
+    # Cortex XDR no se instala con la bateria baja (Error 29002, VerifyBatteryStateCA; LG 05-11-2026): se reintenta
+    # cada 30 s hasta 10 min sin gastar intentos, a la espera del cargador; si no llega, fallo con el motivo claro.
+    if (-not $TimedOut -and $code -ne 0 -and -not $DryRun -and $Job.LogFile -and (Test-Path -LiteralPath $Job.LogFile) -and
+        (Select-String -LiteralPath $Job.LogFile -Pattern 'Error 29002|VerifyBatteryStateCA|battery level is low' -Quiet -ErrorAction SilentlyContinue)) {
+        $pw = Get-PowerState
+        if (-not $Entry.ContainsKey('BatteryWaits')) { $Entry.BatteryWaits = 0 }
+        $Entry.BatteryWaits++
+        if ($Entry.BatteryWaits -le 20) {
+            $Entry.Attempt--
+            $rec.status = 'retry_pending'; Set-AppRecord $State $app.Name $rec
+            if ($Entry.BatteryWaits -eq 1) { Write-Log "[$tag] $($app.Name): BATERIA BAJA ($($pw.Text)). CONECTA EL CARGADOR: se reintenta solo cada 30 s (max. 10 min)" 'WARN' }
+            return 30
+        }
+        $rec.errors += "bateria baja: no se instala sin cargador ($($pw.Text)). Conectalo y relanza el script"
     }
     $delay = Get-RetryDelay -ExitCode $code -TimedOut $TimedOut -Entry $Entry
     if ($null -ne $delay) {
@@ -1929,6 +2135,30 @@ function Write-FinalReport {
     }
     & $add
 
+    # Resumen plano para el .txt de vistazo rapido (va suelto al lado del zip, para abrir sin descomprimir):
+    # mismos datos que el informe, pero sin markdown ni iconos (cabecera App/Estado/Tiempo alineada).
+    $strip = { param([string]$s) ((("$s" -replace '[^\u0000-\u007F]+', '') -replace '\*\*', '').Trim()) -replace '\s{2,}', ' ' }
+    $qb = New-Object Text.StringBuilder
+    $qadd = { param([string]$l = '') [void]$qb.AppendLine($l) }
+    $appsLine = if ($bad.Count) { "$okN/$total OK - $($bad.Count) con fallo: $(($bad | ForEach-Object { $_.name }) -join ', ')" }
+                else { "$okN/$total OK$(if ($skipN) { " ($skipN saltadas)" })" }
+    & $qadd "Apps     : $appsLine"
+    if ($att.Count) {
+        & $qadd ''
+        & $qadd 'Atencion:'
+        foreach ($l in $att) { & $qadd (& $strip $l) }
+    }
+    & $qadd ''
+    & $qadd 'Apps:'
+    $wN = [int](@($rows | ForEach-Object { "$($_.N)".Length }) | Measure-Object -Maximum).Maximum
+    foreach ($w in ($rows | Sort-Object K, @{ Expression = 'S'; Descending = $true }, N)) {
+        $estP = & $strip $w.E
+        $estP = switch -Wildcard ($estP) { '' { 'OK' } 'pide reinicio' { 'OK (pide reinicio)' } 'sin confirmar' { 'OK sin confirmar' } default { $estP } }
+        $tP = if ($w.S -ge 0) { Format-Duration $w.S } else { '-' }
+        & $qadd ("  {0}  {1,-20} {2}" -f "$($w.N)".PadRight($wN), $estP, $tP)
+    }
+    $Script:QuickBody = $qb.ToString().TrimEnd()
+
     # Equipo, en pocas lineas (la seccion solo sale si hay algo que contar)
     $sbMain = $sb; $sb = New-Object Text.StringBuilder
     $fs = $Script:FinalizeStatus
@@ -2042,10 +2272,11 @@ $Script:WuPs1      = Join-Path $Script:ScriptDir 'WindowsUpdate.ps1'
 $Script:WuJson     = Join-Path $Script:LogDir 'windows_update.json'
 $Script:WuSignal   = Join-Path $Script:LogDir 'wu_continuar.flag'
 $Script:WuProgress = Join-Path $Script:LogDir 'wu_progreso.txt'
+$Script:WuStop     = Join-Path $Script:LogDir 'wu_parar.flag'   # lo crea el vigilante si se alarga: para entre controladores
 if (($Phase -in 'full','install','resume') -and -not $DryRun -and -not $NoWindowsUpdate -and (Test-Path $Script:WuPs1)) {
-    Remove-Item -LiteralPath $Script:WuJson, $Script:WuSignal, $Script:WuProgress -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $Script:WuJson, $Script:WuSignal, $Script:WuProgress, $Script:WuStop -Force -ErrorAction SilentlyContinue
     $Script:WuProc = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -PassThru `
-        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Script:WuPs1)`" -WuMode run -OutJson `"$($Script:WuJson)`" -SignalFile `"$($Script:WuSignal)`" -ProgressFile `"$($Script:WuProgress)`""
+        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Script:WuPs1)`" -WuMode run -OutJson `"$($Script:WuJson)`" -SignalFile `"$($Script:WuSignal)`" -ProgressFile `"$($Script:WuProgress)`" -StopFile `"$($Script:WuStop)`" -MaxMinutes 60"
     Write-Log 'Windows Update en segundo plano: solo controladores y firmware (sincroniza ya; los busca e instala al terminar las apps y Lenovo)' 'INFO'
 }
 
@@ -2059,7 +2290,7 @@ if ($DryRun) { $Script:DryRunOffice = @{ Word = $true; Outlook = $false } }
 
 Write-Step 'PRE-CHECKS'
 if (-not $DryRun) {
-    Write-Log "OS: $((Get-CimInstance Win32_OperatingSystem).Caption) ($([Environment]::OSVersion.Version))" 'INFO'
+    Write-Log "OS: $((Get-CimInstance Win32_OperatingSystem).Caption) ($([Environment]::OSVersion.Version)) $(Get-ArchName)" 'INFO'
     $drive = Get-PSDrive C
     Write-Log ("Disco C: libre {0:N1} GB" -f ($drive.Free / 1GB)) 'INFO'
     if ($drive.Free -lt 8GB) { Write-Log 'WARN: <8GB libres en C:' 'WARN' }
@@ -2068,9 +2299,36 @@ if (-not $DryRun) {
     elseif ($reb.SoftSignals) { Write-Log "Reboot pendiente (SOFT/PFRO) - no bloquea" 'INFO' }
     if (Test-MsiBusy) { Write-Log 'Windows Installer ocupado ahora mismo (Windows Update?). El carril MSI esperara.' 'WARN' }
     Write-Log "Defender RTP: $(if (Test-DefenderRtp) { 'activo' } else { 'inactivo/ausente' }) | boost: $(if ($NoDefenderBoost) { 'desactivado' } else { 'activado' })" 'INFO'
+    $pw0 = Get-PowerState
+    if ($pw0.HasBattery -and -not $pw0.OnAC) { Write-Log "SIN CARGADOR ($($pw0.Text)): conectalo ya. Sin el, Cortex XDR no se instala si la bateria esta baja y no se graba el firmware/BIOS" 'WARN' }
+    else { Write-Log "Alimentacion: $($pw0.Text)" 'INFO' }
     $os0 = Get-OfficeState
     $c2r0 = Get-C2RInfo
     Write-Log ("Office: Word={0} Outlook={1} ({2}) C2R={3} v{4} canal={5}" -f $os0.Word, $os0.Outlook, $os0.Arch, $(if ($c2r0) { $c2r0.Products -join '+' } else { '-' }), $(if ($c2r0) { $c2r0.Version } else { '-' }), $(if ($c2r0) { $c2r0.Channel } else { '-' })) 'INFO'
+}
+
+# LG trae McAfee de fabrica y choca con ESET/Cortex: se quita antes de instalar nada (sincrono, sin reiniciar).
+$Script:McAfeePs1 = Join-Path $Script:ScriptDir 'Quitar-McAfee-LG.ps1'
+if (($Phase -in 'full','install','resume') -and -not $DryRun -and -not $NoMcAfee -and (Test-Path $Script:McAfeePs1)) {
+    $mfr = (Get-CimInstance Win32_ComputerSystem).Manufacturer
+    if ($mfr -match '^LG\b|LG Electronics') {
+        Write-Step 'MCAFEE (LG)'
+        $mcLog = Join-Path $Script:LogDir ("McAfee_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
+        $mcProc = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -PassThru `
+            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($Script:McAfeePs1)`" -LogFile `"$mcLog`""
+        if (-not $mcProc.WaitForExit(20 * 60 * 1000)) {
+            Write-Log "McAfee: la desinstalacion sigue en marcha tras 20 min; se continua sin esperar (ver $mcLog)" 'WARN'
+        } else {
+            # Se desinstalo algo (habia McAfee): el reinicio del final termina de quitarlo (servicios, drivers)
+            if ($mcProc.ExitCode -in 0, 1 -and (Test-Path $mcLog) -and (Select-String -LiteralPath $mcLog -Pattern 'Desinstalando:|Quitando app' -Quiet)) { $Script:McAfeeRemoved = $true }
+            switch ($mcProc.ExitCode) {
+                0       { Write-Log 'McAfee: quitado o no estaba (el reinicio del final lo termina)' 'OK' }
+                1       { Write-Log "McAfee: queda algo instalado, quitalo a mano (ver $mcLog)" 'WARN' }
+                default { Write-Log "McAfee: el script salio con $($mcProc.ExitCode) (ver $mcLog)" 'WARN' }
+            }
+        }
+        if (Test-Path $mcLog) { Get-Content $mcLog | Where-Object { $_ -match 'Encontrad|SIGUE|RESULTADO|Codigo salida|!' } | ForEach-Object { Write-Log "  $_" 'INFO' } }
+    }
 }
 
 Write-Step 'VERIFICANDO ARCHIVOS DE INSTALACION'
@@ -2080,7 +2338,7 @@ foreach ($a in $Script:Apps) {
     if (Test-Path $p) {
         Write-Log "  [OK]   $($a.Name) -> $(Split-Path $p -Leaf)$(if ($def.UsingFallback) { '  (FALLBACK: falta ' + $a.File + ')' })" $(if ($def.UsingFallback) { 'WARN' } else { 'INFO' })
     } else {
-        Write-Log "  [MISS] $($a.Name) -> $p" $(if ($SkipApps -contains $a.Name) { 'INFO' } else { 'WARN' })
+        Write-Log "  [MISS] $($a.Name) -> $p$(if ($Script:IsArm64 -and $a.FileArm64) { '  (equipo ARM64: falta su instalador ARM64; el x64 no se usa)' })" $(if ($SkipApps -contains $a.Name -or -not (Test-AppArch $a)) { 'INFO' } else { 'WARN' })
     }
 }
 $wdDir = Join-Path $Source $imWork
@@ -2116,6 +2374,17 @@ if ($Phase -eq 'cleanup') {
 }
 
 # ---------------- full | install | resume ----------------
+# Marca de ejecucion en curso: se borra al acabar. Si al arrancar sigue ahi, la anterior se corto a mitad (ventana
+# cerrada, equipo apagado) y sus logs van a LOGS_ERRORES del Escritorio. Si muere esta, lo hace Deploy.bat al salir.
+$Script:RunMarker = Join-Path $Script:StatePath 'en_curso.txt'
+if (-not $DryRun) {
+    if (Test-Path -LiteralPath $Script:RunMarker) {
+        $prev = & (Join-Path $Script:ScriptDir 'Save-ErrorLogs.ps1') -StatePath $Script:StatePath -Motivo 'la ejecucion anterior no termino (ventana cerrada o equipo apagado)'
+        Write-Log "La ejecucion anterior se corto a mitad: logs en $prev" 'WARN'
+    }
+    Set-Content -LiteralPath $Script:RunMarker -Value $Script:LogFile -Encoding UTF8
+}
+
 Write-Step "PLAN DE INSTALACION (Phase=$Phase)"
 $State.reboot_required = $false
 Save-State $State
@@ -2129,6 +2398,11 @@ foreach ($a in $Script:Apps) {
     if ($SkipApps -contains $a.Name) {
         $rec.status = 'skipped_by_user'; $rec.errors = @(); Set-AppRecord $State $a.Name $rec
         Write-Log "SKIP $($a.Name) (-SkipApps$(if ($Script:AVApps -contains $a.Name -and $SkipAV) { '/-SkipAV' }))" 'WARN'
+        continue
+    }
+    if (-not (Test-AppArch $a)) {
+        $rec.status = 'skipped_by_user'; $rec.errors = @(); Set-AppRecord $State $a.Name $rec
+        Write-Log "SKIP $($a.Name) (solo para $($a.OnlyArch); este equipo es $(Get-ArchName))" 'INFO'
         continue
     }
     if ($a.Type -eq 'office') {
@@ -2151,7 +2425,7 @@ foreach ($a in $Script:Apps) {
     if (-not $DryRun -and -not (Test-Path (Resolve-AppPath $def))) {
         $rec.status = 'fail'; $rec.errors = @("file_not_found:$(Resolve-AppPath $def)"); $rec.finished = (Get-Date -Format 'o')
         Set-AppRecord $State $a.Name $rec
-        Write-Log "FAIL $($a.Name) - instalador no existe: $(Resolve-AppPath $def)" 'ERROR'
+        Write-Log "FAIL $($a.Name) - instalador no existe: $(Resolve-AppPath $def)$(if ($Script:IsArm64 -and $a.FileArm64) { ' (equipo ARM64: falta su instalador ARM64; el x64 no se usa)' })" 'ERROR'
         continue
     }
     $rec.status = 'queued'; $rec.errors = @(); $rec.attempts = 0; $rec.history = @()
@@ -2317,7 +2591,7 @@ if ($Script:FinalizeAnswers) {
     # lo frena (se apunta). Si Lenovo pide apagar (algun firmware), se apaga.
     $dec = Get-AutoRebootDecision -Records @(Get-AllRecords $State) -FinalizeStatus $Script:FinalizeStatus -DomainWanted $Script:DomainWanted `
         -LenovoResult $Script:LenovoResult -WuResult $Script:WuResult -WindowsPending ([bool](Test-PendingReboot).HardPending) `
-        -UpdatesRunning ([bool]($Script:LenovoRunning -or $Script:WuRunning))
+        -UpdatesRunning ([bool]($Script:LenovoRunning -or $Script:WuRunning)) -McAfeeRemoved ([bool]$Script:McAfeeRemoved)
     $warnTxt = if ($dec.Warn) { " | aviso: $($dec.Warn -join '; ')" } else { '' }
     if ($NoAutoReboot) {
         $Script:FinalizeResult['Reinicio automatico'] = "desactivado (-NoAutoReboot)$(if ($dec.Need) { "; pediria: $($dec.Need -join ', ')" })"
@@ -2331,14 +2605,14 @@ if ($Script:FinalizeAnswers) {
         # Se ejecuta desde ProgramData: no depende de la carpeta de NodeDeploy (la del escritorio se puede borrar)
         $mon = Join-Path $Script:MonitorDir 'RebootMonitor.ps1'
         try {
-            New-Item -ItemType Directory -Force -Path $Script:MonitorDir | Out-Null
+            Protect-NodeDir $Script:MonitorDir   # ACL solo SYSTEM+Administradores antes de copiar/ejecutar scripts desde aqui
             Copy-Item -LiteralPath (Join-Path $Script:ScriptDir 'RebootMonitor.ps1'), (Join-Path $Script:ScriptDir 'Cleanup.ps1') -Destination $Script:MonitorDir -Force
         } catch {}
         $pidList = @(@($Script:LenovoProc, $Script:WuProc) | Where-Object { $_ -and -not $_.HasExited } | ForEach-Object { $_.Id }) + @($PID)
         $monArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$mon`" -Pids $($pidList -join ',') -LogFile `"$($Script:LogFile)`" -CleanupFlag `"$(Join-Path $Script:MonitorDir 'borrar_carpeta.flag')`""
         # Solo los JSON de lo que se lanzo (sin JSON al final = no termino bien). Nada vacio: PS 5.1 lo descarta.
         if ($Script:LenovoProc) { $monArgs += " -LenovoJson `"$($Script:LenovoJson)`"" }
-        if ($Script:WuProc)     { $monArgs += " -WuJson `"$($Script:WuJson)`"" }
+        if ($Script:WuProc)     { $monArgs += " -WuJson `"$($Script:WuJson)`" -WuStopFile `"$($Script:WuStop)`" -WuPid $($Script:WuProc.Id)" }
         if ($dec.Need)          { $monArgs += " -Need `"$($dec.Need -join ', ')`"" }
         if (Test-Path -LiteralPath $mon) {
             Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -ArgumentList $monArgs | Out-Null
@@ -2410,6 +2684,9 @@ if (-not $DryRun -and $Phase -in 'full','install','resume') {
         }
     }
 }
+
+# Ejecucion terminada (los logs ya estan guardados): fuera la marca de "en curso"
+Remove-Item -LiteralPath $Script:RunMarker -Force -ErrorAction SilentlyContinue
 
 if ($State.reboot_required) {
     Write-Log '=== REINICIO REQUERIDO === Reinicia el equipo para completar (instaladores que lo piden y/o union al dominio)' 'WARN'

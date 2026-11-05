@@ -323,6 +323,17 @@ function Invoke-Finalize {
                         Write-Log "[CIERRE] Quitar '$($u.Name)' de Administradores: $($_.Exception.Message)" 'ERROR'
                     }
                 }
+                # La cuenta que crea la instalacion de Windows solo esta en Administradores: al sacarla se quedaba sin
+                # ningun grupo (entra igual via Usuarios autentificados, pero no es una cuenta estandar normal).
+                try {
+                    Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $u -ErrorAction Stop
+                    Write-Log "[CIERRE] '$($u.Name)' anadido al grupo Usuarios" 'OK'
+                } catch {
+                    if ("$($_.FullyQualifiedErrorId)" -notlike 'MemberExists*') {
+                        $msgs += "aviso '$($u.Name)': no se pudo meter en Usuarios ($($_.Exception.Message))"
+                        Write-Log "[CIERRE] Meter '$($u.Name)' en Usuarios: $($_.Exception.Message)" 'WARN'
+                    }
+                }
             }
             $res['Usuario estandar'] = $msgs -join '; '
             $Script:FinalizeStatus.UserOk = -not ($msgs -match '^ERROR')

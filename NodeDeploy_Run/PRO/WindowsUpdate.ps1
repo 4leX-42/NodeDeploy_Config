@@ -19,11 +19,17 @@ param(
     [ValidateSet('', 'run')][string]$WuMode = '',
     [string]$OutJson,
     [string]$SignalFile,
-    [string]$ProgressFile
+    [string]$ProgressFile,
+    [string]$StopFile,             # si aparece (lo crea el vigilante), se para al terminar el controlador en curso
+    [int]$MaxMinutes = 60          # tope de la fase de instalacion de controladores; lo que falte lo pone Windows despues
 )
 
 $Script:WuBusy  = -2145124330   # 0x80240016 WU_E_INSTALL_NOT_ALLOWED: otra instalacion en curso -> esperar y reintentar
 $Script:DrvQuery = "IsInstalled=0 and IsHidden=0 and Type='Driver'"   # tambien opcionales: solo los del hardware presente
+# Controladoras de almacenamiento de servidor que Windows Update ofrece por error a portatiles (en un LG gram puso
+# "Areca Technology Corporation - System"): un driver de disco equivocado puede dejar el equipo sin arrancar.
+$Script:DrvSkipVendor = '(?i)\b(Areca|Adaptec|LSI|Broadcom.*(RAID|SAS)|Marvell.*(RAID|SATA|AHCI)|HighPoint|Promise|QLogic|Emulex|Avago|PMC-Sierra|Microsemi)\b'
+$Script:DrvSkipClass  = '(?i)^(SCSIAdapter|HDC)$'
 
 function Set-WuProgress([string]$Text) {
     if ($ProgressFile) { try { Set-Content -LiteralPath $ProgressFile -Value $Text -Encoding UTF8 -ErrorAction Stop } catch {} }
@@ -36,11 +42,19 @@ function Test-WuOnACPower {
 }
 
 function Get-WuDrivers {
+    # Devuelve los controladores a instalar; los descartados van a $Script:DrvDiscarded (para el informe)
     param($Session)
+    $Script:DrvDiscarded = @()
     $sr = $Session.CreateUpdateSearcher().Search($Script:DrvQuery)
     @(for ($i = 0; $i -lt $sr.Updates.Count; $i++) {
         $u = $sr.Updates.Item($i)
-        if ($u.Title -notmatch '(?i)\bpreview\b|versi.n preliminar|vista previa') { $u }
+        if ($u.Title -match '(?i)\bpreview\b|versi.n preliminar|vista previa') { continue }
+        $prov = "$($u.DriverProvider) $($u.DriverManufacturer) $($u.Title)"
+        if ($prov -match $Script:DrvSkipVendor -or "$($u.DriverClass)" -match $Script:DrvSkipClass) {
+            $Script:DrvDiscarded += "$($u.Title) (controladora de disco [$($u.DriverClass)]: no se instala)"
+            continue
+        }
+        $u
     })
 }
 
@@ -81,6 +95,7 @@ function Invoke-WindowsUpdate {
     $todo = @(Get-WuDrivers -Session $session)
     $tB = [int]$swB.Elapsed.TotalSeconds
     $res.found = $todo.Count
+    $res.skipped += @($Script:DrvDiscarded)
     if (-not $todo.Count) {
         $res.notes += "controladores: nada pendiente (busqueda $tB s)"
         Set-WuProgress 'nada pendiente'
@@ -96,6 +111,15 @@ function Invoke-WindowsUpdate {
     $swIn = [Diagnostics.Stopwatch]::StartNew(); $blDone = $false
     for ($i = 0; $i -lt $todo.Count; $i++) {
         $u = $todo[$i]; $t = $u.Title
+        # Tope de tiempo o parada pedida por el vigilante: se para ENTRE controladores (nunca a mitad de uno)
+        $stop = if ($StopFile -and (Test-Path -LiteralPath $StopFile)) { 'parada pedida por el vigilante' }
+                elseif ($MaxMinutes -gt 0 -and $swIn.Elapsed.TotalMinutes -ge $MaxMinutes) { "tope de $MaxMinutes min" }
+        if ($stop) {
+            $rest = $todo.Count - $i
+            $res.skipped += "$rest controlador(es) sin instalar ($stop): los pone Windows despues"
+            $res.notes += "parado en $($i + 1)/$($todo.Count): $stop"
+            break
+        }
         if ("$($u.DriverClass)" -match '(?i)firmware') {
             if (-not (Test-WuOnACPower)) { $res.skipped += "$t (firmware sin cargador: conectalo y relanza el script)"; continue }
             if (-not $blDone) {
