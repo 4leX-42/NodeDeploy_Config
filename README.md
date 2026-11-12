@@ -66,6 +66,7 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
      ├─ Carril EXE (NSIS/Inno/MSIX, en paralelo) ──────────────────────────────────────────┤
      │   Bit4id → PDFelement → Autofirma (después de Chrome) → NanaZip                     │
      │                                                                                     │
+     ├─ Según fabricante: Lenovo → Lenovo.ps1 · LG → quitar McAfee · Samsung → Samsung.ps1 ┤
      ├─ Lenovo (background, Lenovo.ps1) ── controladores ya; red + firmware/BIOS al final ─┤
      │                                                                                     │
      └─ Windows Update (background, WindowsUpdate.ps1) ── sincroniza ya; drivers al final ───────┘

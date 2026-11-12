@@ -129,6 +129,21 @@ Proceso aparte desde t=0, solo en equipos Lenovo, con el módulo oficial `Lenovo
 
 No reinicia a mitad: informa de lo pendiente en la sección **Actualizaciones Lenovo** del informe y el reinicio (o apagado, si el firmware lo pide) lo hace el reinicio automático del final, después del dominio. Deploy.ps1 espera a que acabe (máx. 30 min) antes del cierre del equipo. `-NoLenovoUpdates` lo omite; `-NoBIOS` deja fuera firmware y BIOS.
 
+## Según el fabricante (v5.7.8)
+
+Deploy detecta el fabricante al arrancar y lo escribe en el log con lo que va a hacer (`Fabricante: Samsung (...) -> ...`):
+
+| Fabricante | Pasos propios | Además |
+|---|---|---|
+| Lenovo | `Lenovo.ps1`: controladores, firmware y BIOS del catálogo de Lenovo | Windows Update |
+| LG | `Quitar-McAfee-LG.ps1`: quita el McAfee de fábrica antes de instalar | Windows Update |
+| Samsung | `Samsung.ps1`: diagnóstico del equipo en los logs (después de Windows Update) | Windows Update |
+| Surface y otros | — | Windows Update |
+
+Samsung no tiene herramienta para actualizar en silencio: sus controladores y su BIOS llegan por Windows Update, que ya los instala (`WindowsUpdate.ps1`; el firmware, con cargador y BitLocker en pausa). Como los Samsung no terminaban de actualizar ni reiniciaban solos, `Samsung.ps1` pasa `Recoger-Equipo.ps1 -Rapido` (~30 s, solo lee). El zip `Equipo_<PC>_<fecha>.zip` va dentro del zip de logs, y sus **claves** salen en el log (`Samsung: Reinicio PENDIENTE...`, `Windows Update en PAUSA...`). Con eso se decide qué más hacer en `Samsung.ps1`. `-NoSamsung` lo omite.
+
+`Recoger-Equipo.ps1` también se puede pasar a mano en cualquier portátil (como administrador; deja el zip en `C:\Diag` y en el escritorio público). Sin `-Rapido` también busca las actualizaciones pendientes, saca el log de Windows Update y `gpresult`, y tarda de 1 a 15 min.
+
 ## Windows Update (v5.7.3, `WindowsUpdate.ps1`): solo controladores y firmware
 
 Proceso aparte desde t=0 con el agente de Windows Update (API COM `Microsoft.Update.Session` de Windows, sin módulos externos). **Solo controladores y firmware (BIOS)**: es lo que hace falta para entregar el portátil. La acumulativa, .NET, Defender, la versión nueva de Windows… no: los instala Windows por su cuenta después (eran ~30 min de espera al final sin ver nada).
@@ -198,6 +213,7 @@ Los parámetros extra se pasan tal cual a `Deploy.ps1` (`Deploy.bat full -SkipAV
 | `-NoOptimize` | Sin optimización de Windows (`Optimize.ps1`: limpieza de apps, publicidad, arranque, barra de tareas, TRIM). |
 | `-NoLenovoUpdates` | Sin actualizaciones de Lenovo (`Lenovo.ps1`). |
 | `-NoMcAfee` | En los LG, no quita el McAfee de fábrica (`Quitar-McAfee-LG.ps1`). |
+| `-NoSamsung` | En los Samsung, sin el diagnóstico de `Samsung.ps1`. |
 | `-NoWindowsUpdate` | Sin actualizaciones de Windows Update (`WindowsUpdate.ps1`). |
 | `-NoAutoReboot` | Sin reinicio automático ni vigilante (laboratorio / pruebas). |
 | `-KeepFolder` | No borra la carpeta del escritorio al terminar. |

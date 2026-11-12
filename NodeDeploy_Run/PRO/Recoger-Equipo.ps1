@@ -10,9 +10,11 @@
     Deja C:\Diag\Equipo_<PC>_<fecha>.zip y una copia en el escritorio publico. Abrir primero RESUMEN.txt: al final
     trae "== Claves ==" con lo que mas suele explicar el problema.
     -Rapido omite la busqueda de actualizaciones pendientes, el log de WU y gpresult.
+    -Desatendido (lo usa Samsung.ps1 desde Deploy): solo deja el zip, sin copia en el escritorio publico.
+    -ClavesJson <fichero>: escribe ahi la ruta del zip y las claves (para el log de Deploy).
     Solo ASCII: Windows PowerShell 5.1 lee los .ps1 sin BOM como ANSI.
 #>
-param([string]$Salida = 'C:\Diag', [switch]$Rapido)
+param([string]$Salida = 'C:\Diag', [switch]$Rapido, [switch]$Desatendido, [string]$ClavesJson)
 
 $ErrorActionPreference = 'Continue'
 $stamp = Get-Date -Format 'yyyyMMdd_HHmm'
@@ -288,6 +290,12 @@ if ($claves.Count) { $claves | ForEach-Object { W "  - $_" } } else { W '  nada 
 $zip = "$dir.zip"
 try {
     Compress-Archive -Path "$dir\*" -DestinationPath $zip -Force -ErrorAction Stop
-    Copy-Item $zip 'C:\Users\Public\Desktop' -Force -ErrorAction SilentlyContinue
-    W ''; W "Listo: $zip (y copia en el escritorio publico)"
-} catch { W "No se pudo comprimir ($($_.Exception.Message)). Carpeta: $dir" }
+    if ($Desatendido) {
+        Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "Listo: $zip"
+    } else {
+        Copy-Item $zip 'C:\Users\Public\Desktop' -Force -ErrorAction SilentlyContinue
+        W ''; W "Listo: $zip (y copia en el escritorio publico)"
+    }
+} catch { W "No se pudo comprimir ($($_.Exception.Message)). Carpeta: $dir"; $zip = $dir }
+if ($ClavesJson) { [ordered]@{ zip = $zip; claves = @($claves) } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $ClavesJson -Encoding UTF8 }
