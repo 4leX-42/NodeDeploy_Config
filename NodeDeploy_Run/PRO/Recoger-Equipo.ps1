@@ -32,9 +32,9 @@ function Copiar([string]$src, [string]$sub) {
     } catch { W "  ! no se pudo copiar $src : $($_.Exception.Message)"; return $false }
 }
 function Txt([string]$name, $lines) { $lines | Out-File -LiteralPath (Join-Path $dir $name) -Encoding UTF8 -Width 400 }
-function Reg([string]$path) {
+function Reg([string]$path, [switch]$Plano) {
     if (-not (Test-Path $path)) { return }
-    foreach ($k in @(Get-Item $path) + @(Get-ChildItem $path -Recurse -ErrorAction SilentlyContinue)) {
+    foreach ($k in @(Get-Item $path) + @(if (-not $Plano) { Get-ChildItem $path -Recurse -ErrorAction SilentlyContinue })) {
         $p = Get-ItemProperty $k.PSPath -ErrorAction SilentlyContinue
         if ($p) { $p.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' } | ForEach-Object { W ("  {0} | {1} = {2}" -f ($k.Name -replace '^HKEY_LOCAL_MACHINE', 'HKLM'), $_.Name, $_.Value) } }
     }
@@ -136,8 +136,8 @@ foreach ($p in 'PauseUpdatesExpiryTime', 'PauseQualityUpdatesEndTime', 'PauseFea
 }
 W ''
 W '== Controladores del fabricante bloqueados (metadatos de dispositivo) =='
-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Device Metadata'
-Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching'
+Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Device Metadata' -Plano
+Reg 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching' -Plano
 $ds = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching' -ErrorAction SilentlyContinue
 if ($ds.SearchOrderConfig -eq 0) { K 'SearchOrderConfig=0: Windows no busca controladores en Windows Update' }
 W ''
@@ -173,9 +173,12 @@ Txt 'powercfg_plan.txt' (& powercfg.exe /q 2>&1)
 W ''
 W '== Apagados y reinicios (14 dias) =='
 $since = (Get-Date).AddDays(-14)
-$ev = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 41, 1074, 1076, 6005, 6006, 6008, 109, 1, 42, 107; StartTime = $since } -ErrorAction SilentlyContinue |
-        Where-Object { $_.Id -notin 1, 42, 107 -or $_.ProviderName -match 'Kernel-General|Kernel-Power|Power-Troubleshooter' } | Select-Object -First 80)
-foreach ($e in $ev) { W ("  {0:yyyy-MM-dd HH:mm} | {1} {2} | {3}" -f $e.TimeCreated, $e.ProviderName, $e.Id, (($e.Message -split "`r?`n") | Where-Object { $_ } | Select-Object -First 2) -join ' / ') }
+$ev = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 41, 1074, 1076, 6005, 6006, 6008, 109, 42, 107; StartTime = $since } -ErrorAction SilentlyContinue |
+        Where-Object { $_.Id -notin 42, 107 -or $_.ProviderName -match 'Kernel-Power|Power-Troubleshooter' } | Select-Object -First 80)
+foreach ($e in $ev) {
+    $msg = @($e.Message -split "`r?`n" | Where-Object { $_ } | Select-Object -First 2) -join ' / '
+    W ("  {0:yyyy-MM-dd HH:mm} | {1} {2} | {3}" -f $e.TimeCreated, $e.ProviderName, $e.Id, $msg)
+}
 if (@($ev | Where-Object Id -eq 41).Count) { K "Kernel-Power 41 (apagado sucio) $(@($ev | Where-Object Id -eq 41).Count) veces en 14 dias" }
 W ''
 

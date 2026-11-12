@@ -120,6 +120,10 @@
     -> Lenovo.ps1; LG -> quitar McAfee; Samsung -> Samsung.ps1; todos -> Windows Update. Samsung.ps1 (tras Windows
     Update) deja el diagnostico del equipo (Recoger-Equipo.ps1 -Rapido) en los logs y sus claves en el log, para ver
     por que los Samsung no actualizan ni reinician. -NoSamsung lo omite.
+    Reinicio del final: tambien si esta pasada instalo apps o quedan ficheros a sustituir al reiniciar
+    (PendingFileRenameOperations). Un Galaxy Book6 con 9 apps nuevas y 71 ficheros pendientes acababa en "Nada pide
+    reiniciar" y no reiniciaba nunca; no era cosa de Samsung. Windows Update: los controladores de disco descartados
+    (Areca...) se ocultan, para que Windows no los instale despues por su cuenta.
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -1129,8 +1133,11 @@ function Get-AutoRebootDecision {
     # Why = lo que lo impide, solo dos cosas: actualizaciones aun instalandose (lo recoge el vigilante) o un dominio
     #       pedido que aun no esta unido (el dominio va siempre antes del reinicio).
     # Warn = avisos que NO frenan el reinicio (app con fallo, cierre pospuesto): se apuntan en el informe.
+    # v5.7.8: tambien apps instaladas en esta pasada y ficheros a sustituir al reiniciar (PendingFileRenameOperations):
+    # los MSI van sin Restart Manager y lo que estaba en uso se cambia al reiniciar. Un Samsung con 9 apps nuevas y 71
+    # ficheros pendientes quedaba en "Nada pide reiniciar" (AND-SAMMONICA, 12-nov-2026).
     param($Records, $FinalizeStatus, [bool]$DomainWanted, $LenovoResult, $WuResult, [bool]$WindowsPending, [bool]$UpdatesRunning,
-          [bool]$McAfeeRemoved)
+          [bool]$McAfeeRemoved, [bool]$FilesPending)
     $fs = $FinalizeStatus
     $lnPend = @(if ($LenovoResult) { $LenovoResult.pending })
     $need = @()
@@ -1139,7 +1146,10 @@ function Get-AutoRebootDecision {
     if ($lnPend -match 'REBOOT|SHUTDOWN')   { $need += 'actualizaciones de Lenovo' }
     if ($WuResult -and $WuResult.reboot)    { $need += 'Windows Update' }
     if (@($Records | Where-Object { $_.status -eq 'ok_reboot' }).Count) { $need += 'instaladores' }
+    $newApps = @($Records | Where-Object { $_.status -in 'ok', 'ok_unverified' -and -not $_.preinstalled }).Count
+    if ($newApps -and -not ($need -contains 'instaladores')) { $need += "apps instaladas ($newApps)" }
     if ($WindowsPending -and -not ($WuResult -and $WuResult.reboot)) { $need += 'Windows lo pide' }
+    elseif ($FilesPending) { $need += 'ficheros a sustituir al reiniciar' }
     $why = @()
     if ($UpdatesRunning) { $why += 'actualizaciones aun instalandose' }
     if ($DomainWanted -and -not ($fs -and $fs.DomainDone)) { $why += 'falta unir al dominio (va antes del reinicio)' }
@@ -2640,9 +2650,11 @@ if ($Script:FinalizeAnswers) {
     # Lenovo, Windows Update, instaladores o Windows. Nunca antes del dominio: si se pidio dominio y no esta unido,
     # no. Si las actualizaciones siguen instalandose, un vigilante reinicia cuando terminen. Una app con fallo no
     # lo frena (se apunta). Si Lenovo pide apagar (algun firmware), se apaga.
+    $pr  = Test-PendingReboot
     $dec = Get-AutoRebootDecision -Records @(Get-AllRecords $State) -FinalizeStatus $Script:FinalizeStatus -DomainWanted $Script:DomainWanted `
-        -LenovoResult $Script:LenovoResult -WuResult $Script:WuResult -WindowsPending ([bool](Test-PendingReboot).HardPending) `
-        -UpdatesRunning ([bool]($Script:LenovoRunning -or $Script:WuRunning)) -McAfeeRemoved ([bool]$Script:McAfeeRemoved)
+        -LenovoResult $Script:LenovoResult -WuResult $Script:WuResult -WindowsPending ([bool]$pr.HardPending) `
+        -UpdatesRunning ([bool]($Script:LenovoRunning -or $Script:WuRunning)) -McAfeeRemoved ([bool]$Script:McAfeeRemoved) `
+        -FilesPending ([bool]@($pr.SoftSignals).Count)
     $warnTxt = if ($dec.Warn) { " | aviso: $($dec.Warn -join '; ')" } else { '' }
     if ($NoAutoReboot) {
         $Script:FinalizeResult['Reinicio automatico'] = "desactivado (-NoAutoReboot)$(if ($dec.Need) { "; pediria: $($dec.Need -join ', ')" })"
