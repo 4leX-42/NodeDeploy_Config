@@ -129,6 +129,23 @@ Proceso aparte desde t=0, solo en equipos Lenovo, con el módulo oficial `Lenovo
 
 No reinicia a mitad: informa de lo pendiente en la sección **Actualizaciones Lenovo** del informe y el reinicio (o apagado, si el firmware lo pide) lo hace el reinicio automático del final, después del dominio. Deploy.ps1 espera a que acabe (máx. 30 min) antes del cierre del equipo. `-NoLenovoUpdates` lo omite; `-NoBIOS` deja fuera firmware y BIOS.
 
+## Según el fabricante (v5.7.8)
+
+Deploy detecta el fabricante al arrancar y lo escribe en el log con lo que va a hacer (`Fabricante: Samsung (...) -> ...`):
+
+| Fabricante | Pasos propios | Además |
+|---|---|---|
+| Lenovo | `Lenovo.ps1`: controladores, firmware y BIOS del catálogo de Lenovo | Windows Update |
+| LG | `Quitar-McAfee-LG.ps1`: quita el McAfee de fábrica antes de instalar | Windows Update |
+| Samsung | `Samsung.ps1`: diagnóstico del equipo en los logs (después de Windows Update) | Windows Update |
+| Surface y otros | — | Windows Update |
+
+Samsung no tiene herramienta para actualizar en silencio: sus controladores y su BIOS llegan por Windows Update, que ya los instala (`WindowsUpdate.ps1`; el firmware, con cargador y BitLocker en pausa). Como los Samsung no terminaban de actualizar ni reiniciaban solos, `Samsung.ps1` pasa `Recoger-Equipo.ps1 -Rapido` (~30 s, solo lee). El zip `Equipo_<PC>_<fecha>.zip` va dentro del zip de logs, y sus **claves** salen en el log (`Samsung: Reinicio PENDIENTE...`, `Windows Update en PAUSA...`). Con eso se decide qué más hacer en `Samsung.ps1`. `-NoSamsung` lo omite.
+
+**Primer Samsung diagnosticado** (Galaxy Book6, 12-nov-2026): Windows Update **sí** le instaló sus controladores y su BIOS 2.4.18. El problema era el reinicio, y no tenía que ver con Samsung: la decisión del final solo contaba las señales "fuertes" de Windows, así que una pasada con 9 apps nuevas y 71 ficheros pendientes de sustituir acababa en "Nada pide reiniciar". Desde v5.7.8 también reinicia si se instalaron apps o hay ficheros pendientes; si todo estaba ya instalado, sigue sin reiniciar. Además, el controlador de disco Areca que Windows Update ofrece por error ahora se oculta, para que Windows no lo instale por su cuenta.
+
+`Recoger-Equipo.ps1` también se puede pasar a mano en cualquier portátil (como administrador; deja el zip en `C:\Diag` y en el escritorio público). Sin `-Rapido` también busca las actualizaciones pendientes, saca el log de Windows Update y `gpresult`, y tarda de 1 a 15 min.
+
 ## Windows Update (v5.7.3, `WindowsUpdate.ps1`): solo controladores y firmware
 
 Proceso aparte desde t=0 con el agente de Windows Update (API COM `Microsoft.Update.Session` de Windows, sin módulos externos). **Solo controladores y firmware (BIOS)**: es lo que hace falta para entregar el portátil. La acumulativa, .NET, Defender, la versión nueva de Windows… no: los instala Windows por su cuenta después (eran ~30 min de espera al final sin ver nada).
@@ -198,6 +215,7 @@ Los parámetros extra se pasan tal cual a `Deploy.ps1` (`Deploy.bat full -SkipAV
 | `-NoOptimize` | Sin optimización de Windows (`Optimize.ps1`: limpieza de apps, publicidad, arranque, barra de tareas, TRIM). |
 | `-NoLenovoUpdates` | Sin actualizaciones de Lenovo (`Lenovo.ps1`). |
 | `-NoMcAfee` | En los LG, no quita el McAfee de fábrica (`Quitar-McAfee-LG.ps1`). |
+| `-NoSamsung` | En los Samsung, sin el diagnóstico de `Samsung.ps1`. |
 | `-NoWindowsUpdate` | Sin actualizaciones de Windows Update (`WindowsUpdate.ps1`). |
 | `-NoAutoReboot` | Sin reinicio automático ni vigilante (laboratorio / pruebas). |
 | `-KeepFolder` | No borra la carpeta del escritorio al terminar. |

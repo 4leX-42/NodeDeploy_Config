@@ -51,7 +51,10 @@ function Get-WuDrivers {
         if ($u.Title -match '(?i)\bpreview\b|versi.n preliminar|vista previa') { continue }
         $prov = "$($u.DriverProvider) $($u.DriverManufacturer) $($u.Title)"
         if ($prov -match $Script:DrvSkipVendor -or "$($u.DriverClass)" -match $Script:DrvSkipClass) {
-            $Script:DrvDiscarded += "$($u.Title) (controladora de disco [$($u.DriverClass)]: no se instala)"
+            # Oculto en Windows Update: si no, Windows lo instala por su cuenta despues (en AND-SAMMONICA seguia
+            # "descargado" y pendiente). Se puede volver a mostrar en Configuracion > Windows Update.
+            $hid = try { $u.IsHidden = $true; ', oculto en Windows Update' } catch { '' }
+            $Script:DrvDiscarded += "$($u.Title) (controladora de disco [$($u.DriverClass)]: no se instala$hid)"
             continue
         }
         $u

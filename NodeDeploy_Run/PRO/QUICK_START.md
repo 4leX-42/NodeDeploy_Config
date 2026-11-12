@@ -15,6 +15,8 @@ nodedeploy\
     ├── Deploy.ps1
     ├── Finalize.ps1          <- cierre: Administrador, usuario, dominio
     ├── Lenovo.ps1            <- controladores, firmware y BIOS de Lenovo
+    ├── Samsung.ps1           <- Samsung: diagnostico en los logs (Recoger-Equipo.ps1)
+    ├── Recoger-Equipo.ps1    <- diagnostico de solo lectura (tambien a mano)
     ├── Optimize.ps1          <- limpieza, arranque y barra de tareas
     └── Validate.ps1
 ```

@@ -75,9 +75,9 @@ compartida de la VM sigue a la copia desde la que se lanza la prueba. `lab.local
 
 Scripts que **solo leen** (no instalan, no desinstalan ni reinician). Se pasan como administrador en el portátil y dejan un zip en `C:\Diag` y otro en el escritorio público:
 
-- `Recoger-Equipo.ps1`: para cualquier marca (Samsung, LG, Lenovo, Surface…). Recoge hardware, BIOS, batería, software y servicios del fabricante, Windows Update (servicios, directivas, pausa, historial, pendientes y su log), reinicio pendiente, energía (`powercfg`), eventos de apagado, dispositivos sin controlador y los logs de NodeDeploy. Al final de `RESUMEN.txt`, en `== Claves ==`, sale lo que explica por qué no actualiza o no se reinicia. `-Rapido` (~30 s) se salta la búsqueda de actualizaciones, el log de WU y `gpresult`; sin `-Rapido` tarda de 5 a 15 min.
+- `..\NodeDeploy_Run\PRO\Recoger-Equipo.ps1` (va con el kit; en los Samsung lo lanza Deploy solo, con `Samsung.ps1`): para cualquier marca (Samsung, LG, Lenovo, Surface…). Recoge hardware, BIOS, batería, software y servicios del fabricante, Windows Update (servicios, directivas, pausa, historial, pendientes y su log), reinicio pendiente, energía (`powercfg`), eventos de apagado, dispositivos sin controlador y los logs de NodeDeploy. Al final de `RESUMEN.txt`, en `== Claves ==`, sale lo que explica por qué no actualiza o no se reinicia. `-Rapido` (~30 s) se salta la búsqueda de actualizaciones, el log de WU y `gpresult`; sin `-Rapido` tarda de 1 a 15 min.
 - `Recoger-McAfee-LG.ps1`: un LG recién sacado de la caja, con McAfee todavía instalado, para reproducir su desinstalación en la VM.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File Recoger-Equipo.ps1
+powershell -ExecutionPolicy Bypass -File NodeDeploy_Run\PRO\Recoger-Equipo.ps1
 ```

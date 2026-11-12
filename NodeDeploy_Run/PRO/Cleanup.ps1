@@ -90,7 +90,7 @@ try {
     }
 } catch { Write-CleanupLog "error: $($_.Exception.Message)" }
 
-if ($NoReboot) { Write-CleanupLog 'sin reinicio desde aqui (-NoReboot: ya lo programo quien me llamo)'; exit 0 }
+if ($NoReboot) { Write-CleanupLog 'sin reinicio desde aqui (-NoReboot): si hacia falta, Deploy.bat lo programo antes (ver reinicio.log; si no existe, Deploy decidio no reiniciar)'; exit 0 }
 # Compatibilidad (Deploy.bat anterior a 5.7.6): el reinicio lo hacia este script. Se comprueba el codigo.
 if ($Action -in 'reiniciar', 'apagar') {
     $m = if ($Action -eq 'apagar') { 's' } else { 'r' }
