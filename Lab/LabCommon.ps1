@@ -85,6 +85,34 @@ function Copy-ToLabGuest {
     Invoke-Vmrun -Guest -Config $Config -Arguments @('copyFileFromHostToGuest', $Config.VmxPath, $HostPath, $GuestPath) | Out-Null
 }
 
+function Sync-LabFolderToGuest {
+    <#
+        Copia una carpeta del host al invitado por carpeta compartida (HGFS) + robocopy dentro del invitado.
+        Medido 2026-11-16: 519 MB en 5 s, frente a mas de 4 min con copyFileFromHostToGuest (~2 MB/s).
+        Para ficheros pequenos (scripts) Copy-ToLabGuest sigue valiendo.
+        Notas: el share tarda unos segundos en verse tras revertir (se reintenta); las comillas no pueden ir
+        en la linea de runProgramInGuest (PowerShell las rompe), por eso robocopy va en un .cmd.
+    #>
+    param($Config, [Parameter(Mandatory)][string]$HostDir, [Parameter(Mandatory)][string]$GuestDir,
+          [string]$ShareName = 'labsync', [int]$Retries = 10)
+    Invoke-Vmrun -AllowFail -Arguments @('enableSharedFolders', $Config.VmxPath) | Out-Null
+    Invoke-Vmrun -AllowFail -Arguments @('removeSharedFolder', $Config.VmxPath, $ShareName) | Out-Null
+    Invoke-Vmrun -Arguments @('addSharedFolder', $Config.VmxPath, $ShareName, (Resolve-Path $HostDir).Path) | Out-Null
+    $cmd = Join-Path $env:TEMP "labsync-$ShareName.cmd"
+    $lines = @('@echo off', "rd /s /q `"$GuestDir`" 2>nul",
+        "robocopy `"\\vmware-host\Shared Folders\$ShareName`" `"$GuestDir`" /E /NDL /NFL /NP /R:1 /W:1 /MT:8 > C:\LabRun\labsync.log",
+        'if %ERRORLEVEL% GEQ 8 exit /b 1', 'exit /b 0')
+    [IO.File]::WriteAllLines($cmd, $lines, [Text.Encoding]::ASCII)
+    Invoke-Vmrun -Guest -Config $Config -AllowFail -Arguments @('createDirectoryInGuest', $Config.VmxPath, 'C:\LabRun') | Out-Null
+    Copy-ToLabGuest -Config $Config -HostPath $cmd -GuestPath 'C:\LabRun\labsync.cmd'
+    for ($i = 1; $i -le $Retries; $i++) {
+        $r = Invoke-Vmrun -Guest -Config $Config -AllowFail -Arguments @('runProgramInGuest', $Config.VmxPath, 'C:\Windows\System32\cmd.exe', '/c C:\LabRun\labsync.cmd')
+        if ($r.ExitCode -eq 0) { return $true }
+        Start-Sleep -Seconds 3
+    }
+    throw "Sync-LabFolderToGuest: robocopy fallo $Retries veces ($HostDir -> $GuestDir)"
+}
+
 function Copy-FromLabGuest {
     param($Config, [string]$GuestPath, [string]$HostPath)
     Invoke-Vmrun -Guest -Config $Config -AllowFail -Arguments @('copyFileFromGuestToHost', $Config.VmxPath, $GuestPath, $HostPath)
