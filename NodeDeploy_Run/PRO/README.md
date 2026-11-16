@@ -1,6 +1,6 @@
 # NodeDeploy PRO v5
 
-> Despliegue desatendido de las apps corporativas Andersen en portátiles Lenovo.
+> Despliegue desatendido de las apps corporativas Andersen en portátiles Lenovo (ThinkPad L14 Gen 6/7), LG (gram 14ZB90S), Samsung (Galaxy Book6) y Microsoft (Surface Pro 11, ARM64). Detecta la marca y hace sus pasos propios: ver "Según el fabricante".
 > Dos carriles en paralelo (MSI + EXE), Outlook clásico en background, reintentos reales, resumible y validado.
 
 ---
@@ -99,7 +99,7 @@ Al final, **solo si ninguna app quedó en fallo** (si no, se pospone y se hace a
 | 1 | Activa el Administrador integrado (SID `-500`, "Administrador") con esa contraseña | |
 | 2 | Saca la cuenta estándar del grupo Administradores (SID `S-1-5-32-544`): `usuario`, `Usuario`, `user` o `User` (todas las que existan) | Solo si el paso 1 fue bien: nunca deja el equipo sin administrador local. |
 | 3 | Une el equipo al dominio | Lo último. Pide reinicio (exit 3). Si ya estaba en ese dominio, no hace nada. |
-| 4 | **Reinicio automático** (15 s de aviso; `shutdown /a` lo cancela) | Lo último, después del paso del dominio, **siempre que algo lo pida**: unión al dominio, Lenovo, Windows Update, un instalador o Windows. Solo dos cosas lo frenan: un dominio pedido que no quedó unido (el dominio va antes del reinicio) o actualizaciones aún instalándose (entonces un **vigilante**, `RebootMonitor.ps1` desde `C:\ProgramData\NodeDeploy`, espera a que terminen sin cortarlas, máx. 4 h, y reinicia con 60 s de aviso si lo piden ellas o lo que ya pedía reinicio al terminar, p. ej. el dominio; antes borra la carpeta del escritorio si toca; registro en `vigilante.log`). Una app con fallo no lo frena: sale en "Atención". Si un firmware de Lenovo pide apagar, apaga (`shutdown /s`). `-NoAutoReboot` lo desactiva (pruebas). |
+| 4 | **Reinicio automático** (15 s de aviso; `shutdown /a` lo cancela) | Lo último, después del paso del dominio, **siempre que algo lo pida**: apps instaladas en la pasada, ficheros a sustituir al reiniciar (PendingFileRenameOperations; v5.7.8), unión al dominio, Lenovo, Windows Update, McAfee quitado, un instalador o Windows. Si todo estaba ya instalado y no queda nada pendiente, no reinicia. Solo dos cosas lo frenan: un dominio pedido que no quedó unido (el dominio va antes del reinicio) o actualizaciones aún instalándose (entonces un **vigilante**, `RebootMonitor.ps1` desde `C:\ProgramData\NodeDeploy`, espera a que terminen sin cortarlas, máx. 4 h, y reinicia con 60 s de aviso si lo piden ellas o lo que ya pedía reinicio al terminar, p. ej. el dominio; antes borra la carpeta del escritorio si toca; registro en `vigilante.log`). Una app con fallo no lo frena: sale en "Atención". Si un firmware de Lenovo pide apagar, apaga (`shutdown /s`). `-NoAutoReboot` lo desactiva (pruebas). |
 | 5 | Herramientas manuales | Solo se abren `lusrmgr.msc` (si falló algo de cuentas) o `sysdm.cpl` (si el dominio no quedó hecho). Con todo comprobado, no se abre nada. |
 
 Las contraseñas solo están en memoria: no van a log, state ni informe. El resultado sale en la sección **Cierre del equipo** del informe. Probado en la VM (`Lab\guest\Test-Finalize.ps1`); nunca en el PC del técnico.

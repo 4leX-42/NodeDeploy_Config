@@ -1,16 +1,32 @@
-# NodeDeploy PRO v5 — despliegue desatendido de las apps corporativas (Lenovo)
+# NodeDeploy PRO v5 — despliegue desatendido de las apps corporativas (Lenovo, LG, Samsung y Surface)
+
+Prepara un portátil nuevo de fábrica: instala las 20 apps corporativas, actualiza controladores, firmware y BIOS, optimiza Windows, hace el cierre (Administrador, usuario y dominio) y reinicia. **Detecta el fabricante y hace lo que necesita cada marca**; no hay que elegir nada.
+
+## Equipos
+
+Modelos que ya han pasado por NodeDeploy (sacados de los logs de la carpeta de red, nov-2026):
+
+| Marca | Modelos | Pasos propios de la marca | Notas |
+|---|---|---|---|
+| **Lenovo** | ThinkPad L14 Gen 6 (21S6), ThinkPad L14 Gen 7 (21X2) | `Lenovo.ps1`: controladores, firmware y BIOS del catálogo oficial de Lenovo (como Commercial Vantage, sin abrirlo) | si un firmware lo pide, **apaga** en vez de reiniciar |
+| **LG** | gram 14ZB90S | `Quitar-McAfee-LG.ps1`: quita el McAfee de fábrica (WPS, WebAdvisor, app de la Store) antes de instalar ESET y Cortex | Windows Update le ofrecía un controlador de disco de servidor (Areca): se descarta y se oculta |
+| **Samsung** | Galaxy Book6 (NP744BJG) | `Samsung.ps1`: diagnóstico del equipo en los logs (`Recoger-Equipo.ps1 -Rapido`) | Samsung no tiene herramienta desatendida: controladores y BIOS van por Windows Update |
+| **Microsoft** | Surface Pro 11 (ARM64) | — | apps por arquitectura: Cortex XDR y lo que tenga versión ARM64 usan su instalador ARM64 |
+| Cualquier otra | — | — | solo Windows Update |
+
+En **todas** las marcas: Windows Update de controladores y firmware (`WindowsUpdate.ps1`), optimización de Windows, cierre y reinicio. El log del despliegue dice al arrancar qué ha detectado y qué va a hacer (`Fabricante: Samsung (Samsung Galaxy Book6 ...) -> ...`).
 
 ## M.2 / USB — flujo de 4 pasos
 
 1. Copia la **carpeta completa `nodedeploy\`** del M.2 al **Escritorio** del portátil (más rápido que ejecutarlo desde el M.2; al terminar bien, se borra sola).
-2. Portátil Lenovo con Windows 10/11 x64 y su Microsoft 365 de fábrica, con red por cable y **cargador conectado** (sin él no se instala firmware/BIOS).
+2. Portátil con Windows 10/11 (x64 o ARM64) y su Microsoft 365 de fábrica (sin él: `-InstallFullOffice`), con red por cable y **cargador conectado** (sin él no se instala firmware/BIOS ni Cortex XDR con la batería baja).
 3. **Doble clic `nodedeploy\Pincha_pa_instalar.bat`** (o `NodeDeploy_Run\PRO\Deploy.bat`). Acepta UAC y responde las preguntas del arranque:
    - **dominio**: menú con flechas (o el número) con las sedes de `NodeDeploy_Run\PRO\Dominios.txt` (no va a GitHub), `Otro` para escribirlo a mano o `0` = sin dominio; si hay dominio, usuario con permiso para unir equipos + contraseña;
    - **contraseña del Administrador local** (dos veces).
    
    Si relanzas el script en un equipo ya terminado, no vuelve a preguntar lo ya hecho (Administrador activado, equipo en dominio).
-4. Espera (~15-20 min; más si hay muchas actualizaciones de Lenovo o de Windows). Mientras instala, en segundo plano, **optimiza Windows** (quita apps de Store que sobran, publicidad, Bing, widgets), **actualiza controladores, firmware y BIOS de Lenovo** (como Commercial Vantage, sin abrirlo) e **instala las actualizaciones de Windows Update**. Al final deja sin arrancar con Windows PDFelement, PDF24, Everything, b4notify y Edge (AnyDesk siempre activo), ancla Outlook y Teams a la barra de tareas (sin Microsoft Store) y, si todas las apps quedan OK: Administrador local activado, la cuenta `usuario` (o `user`) fuera de Administradores y, lo último, unión al dominio.
-5. **Reinicio**: si algo lo pide (dominio unido, Lenovo, Windows Update, instaladores), **reinicia solo a los 15 s** (`shutdown /a` lo cancela), siempre después del dominio; si un firmware de Lenovo pide apagar, apaga. Si las actualizaciones siguen instalándose, un **vigilante** reinicia en cuanto terminen. Una app con fallo no lo frena (sale en el informe); un dominio pedido y sin unir, sí.
+4. Espera (~15-20 min; más si hay muchas actualizaciones del fabricante o de Windows). Mientras instala, en segundo plano, **optimiza Windows** (quita apps de Store que sobran, publicidad, Bing, widgets), hace los **pasos de su marca** (tabla de arriba) e **instala controladores y firmware de Windows Update**. Al final deja sin arrancar con Windows PDFelement, PDF24, Everything, b4notify y Edge (AnyDesk siempre activo), ancla Outlook y Teams a la barra de tareas (sin Microsoft Store) y, si todas las apps quedan OK: Administrador local activado, la cuenta `usuario` (o `user`) fuera de Administradores y, lo último, unión al dominio.
+5. **Reinicio**: **reinicia solo a los 15 s** (`shutdown /a` lo cancela), siempre después del dominio, si la pasada hizo algo que lo necesita: apps instaladas, ficheros a sustituir al reiniciar, dominio unido, actualizaciones del fabricante o de Windows Update, McAfee quitado, o Windows lo pide. Si todo estaba ya instalado y no queda nada pendiente, no reinicia. Si un firmware de Lenovo pide apagar, apaga. Si las actualizaciones siguen instalándose, un **vigilante** reinicia en cuanto terminen. Una app con fallo no lo frena (sale en el informe); un dominio pedido y sin unir, sí. Programar el reinicio queda apuntado en `C:\ProgramData\NodeDeploy\reinicio.log`.
 
 **Si una app falla**: se corta rápido (tiempo límite realista por app; si se cuelga no se reintenta) y se sigue con las demás. El informe dice en qué se quedó (procesos y ventanas) y las últimas líneas de su log.
 
@@ -40,6 +56,9 @@ Solo se abren `lusrmgr.msc` / `sysdm.cpl` si hay algo de cuentas o dominio que r
 | Sin preguntas ni cierre (Administrador / usuario / dominio) | `Deploy.bat full -NoFinalize` |
 | Sin optimización de Windows | `Deploy.bat full -NoOptimize` |
 | Sin actualizaciones de Lenovo / solo sin BIOS ni firmware | `Deploy.bat full -NoLenovoUpdates` / `-NoBIOS` |
+| LG: no quitar el McAfee de fábrica | `Deploy.bat full -NoMcAfee` |
+| Samsung: sin el diagnóstico en los logs | `Deploy.bat full -NoSamsung` |
+| **Diagnóstico de un portátil** (no actualiza, no reinicia…), solo lee | `powershell -ExecutionPolicy Bypass -File NodeDeploy_Run\PRO\Recoger-Equipo.ps1` (administrador; zip en el escritorio público) |
 | Sin Windows Update | `Deploy.bat full -NoWindowsUpdate` |
 | Conservar la carpeta del escritorio al terminar | `Deploy.bat full -KeepFolder` |
 | Sin reinicio automático (pruebas) | `Deploy.bat full -NoAutoReboot` |
@@ -66,11 +85,17 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
      ├─ Carril EXE (NSIS/Inno/MSIX, en paralelo) ──────────────────────────────────────────┤
      │   Bit4id → PDFelement → Autofirma (después de Chrome) → NanaZip                     │
      │                                                                                     │
-     ├─ Según fabricante: Lenovo → Lenovo.ps1 · LG → quitar McAfee · Samsung → Samsung.ps1 ┤
-     ├─ Lenovo (background, Lenovo.ps1) ── controladores ya; red + firmware/BIOS al final ─┤
+     ├─ Según fabricante ───────────────────────────────────────────────────────────────────┤
+     │   Lenovo  → Lenovo.ps1 (background) ── controladores ya; red + firmware/BIOS al final│
+     │   LG      → Quitar-McAfee-LG.ps1 ── antes de instalar nada (máx. 20 min)            │
+     │   Samsung → Samsung.ps1 ── diagnóstico en los logs, después de Windows Update       │
      │                                                                                     │
-     └─ Windows Update (background, WindowsUpdate.ps1) ── sincroniza ya; drivers al final ───────┘
+     └─ Windows Update (background, WindowsUpdate.ps1) ── sincroniza ya; drivers al final ─┘
 ```
+
+**LG** (`Quitar-McAfee-LG.ps1`): los gram traen McAfee (WPS, WebAdvisor y su app de la Store), que choca con ESET y Cortex XDR. Se desinstala tras los PRE-CHECKS, sin reiniciar; el reinicio del final termina de quitar servicios y drivers.
+
+**Samsung** (`Samsung.ps1`): Samsung no tiene herramienta para actualizar en silencio (la app Samsung Update no tiene modo desatendido; el BIOS Command Tool solo cambia ajustes de BIOS). Sus controladores y su BIOS llegan por Windows Update, que ya los instala. `Samsung.ps1` deja en los logs el diagnóstico del equipo y sus claves en el log. Con el primer Galaxy Book6 sirvió para ver que el fallo era el reinicio, no Samsung (corregido en v5.7.8).
 
 **Windows Update** (`WindowsUpdate.ps1`, el agente de Windows Update de Windows, sin módulos externos): **solo controladores y firmware (BIOS)**. Desde t=0 solo sincroniza; al terminar las apps y Lenovo los busca, descarga e instala uno a uno (así no se pisan con los de Lenovo), diciendo en la consola cuál instala; firmware solo con cargador. La acumulativa, .NET, Defender y la versión nueva de Windows las instala Windows por su cuenta después (eran ~30 min de espera). El reinicio que pidan entra en el reinicio automático del final.
 
@@ -78,7 +103,7 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
 
 - **Reintentos reales** (`-MaxRetries 2`): 1618 = Windows Installer ocupado (Windows Update, Lenovo Vantage, Store…) → espera y reintenta sin gastar intentos.
 - **Dependencias**: Autofirma tras Chrome (configura Chrome al instalarse), Work Desktop tras Agent Services + Outlook + Word, Cortex XDR siempre el último.
-- **Office**: los Lenovo traen Microsoft 365 (Word/Excel/PPT). Solo se añade **Outlook clásico**, lo primero en t=0 con ODT (`OutlookRetail`, `Version=MatchInstalled`): solo baja Outlook para la versión de Office que ya hay (**~3 min**). Plan B automático (si falla o pasa de 10 min): el instalador oficial de Microsoft (`OutlookClassic.exe`), que además actualiza todo el Office a la última versión (13-16 min). `-OutlookMethod bootstrap` invierte el orden. Office completo solo con `-InstallFullOffice`.
+- **Office**: los portátiles vienen con Microsoft 365 (Word/Excel/PPT). Solo se añade **Outlook clásico**, lo primero en t=0 con ODT (`OutlookRetail`, `Version=MatchInstalled`): solo baja Outlook para la versión de Office que ya hay (**~3 min**). Plan B automático (si falla o pasa de 10 min): el instalador oficial de Microsoft (`OutlookClassic.exe`), que además actualiza todo el Office a la última versión (13-16 min). `-OutlookMethod bootstrap` invierte el orden. Office completo solo con `-InstallFullOffice`.
 - **Consola**: se desactiva QuickEdit al arrancar (un clic en la ventana ya no congela el despliegue).
 - **Defender**: exclusiones temporales solo para los procesos instaladores pesados y sus carpetas destino; se retiran al terminar (y al arrancar si un run anterior murió).
 
@@ -137,6 +162,8 @@ nodedeploy\
 │                                (cada InstallScript lleva su setup.iss: respuesta silenciosa del propio paquete)
 ├── NodeDeploy_Run\
 │   ├── PRO\                     Deploy.bat · Deploy.ps1 · Finalize.ps1 (cierre) · Optimize.ps1 (optimización) · Validate.ps1 · Uninstall.ps1 · Diag-iManageWD.ps1
+│   │                            WindowsUpdate.ps1 (controladores y firmware) · RebootMonitor.ps1 (vigilante) · Cleanup.ps1 (borrado de la carpeta)
+│   │                            Lenovo.ps1 · Quitar-McAfee-LG.ps1 · Samsung.ps1 (pasos por marca) · Recoger-Equipo.ps1 (diagnóstico, solo lee)
 │   │                            README.md (técnico) · QUICK_START.md · CHECKLIST.md
 │   └── state\                   se crea al ejecutar: logs y estado (los informes quedan en NodeDeploy_Run\)
 ├── Lab\                       ← laboratorio VMware: pruebas sin tocar el PC
@@ -167,4 +194,4 @@ nodedeploy\
 
 ---
 
-_Última actualización: 2026-10-01 — NodeDeploy PRO v5.7.0_
+_Última actualización: 2026-11-16 — NodeDeploy PRO v5.7.8 (pasos por marca, Samsung, reinicio corregido)_
