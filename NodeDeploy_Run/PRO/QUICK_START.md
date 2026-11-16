@@ -4,7 +4,7 @@
 
 ## 1) Equipo destino
 
-Portátil Lenovo con Windows 10/11 x64 y su **Microsoft 365 de fábrica** (Word/Excel/PPT).
+Portátil Lenovo, LG, Samsung o Surface con Windows 10/11 (x64 o ARM64) y su **Microsoft 365 de fábrica** (Word/Excel/PPT). La marca la detecta solo: Lenovo actualiza con su catálogo, a LG le quita McAfee, Samsung deja su diagnóstico en los logs y todos pasan por Windows Update.
 Conecta el M.2 con la carpeta `nodedeploy` (la ruta da igual).
 
 ```
@@ -15,6 +15,9 @@ nodedeploy\
     ├── Deploy.ps1
     ├── Finalize.ps1          <- cierre: Administrador, usuario, dominio
     ├── Lenovo.ps1            <- controladores, firmware y BIOS de Lenovo
+    ├── Quitar-McAfee-LG.ps1  <- LG: quita el McAfee de fabrica
+    ├── Samsung.ps1           <- Samsung: diagnostico en los logs (Recoger-Equipo.ps1)
+    ├── Recoger-Equipo.ps1    <- diagnostico de solo lectura (tambien a mano)
     ├── Optimize.ps1          <- limpieza, arranque y barra de tareas
     └── Validate.ps1
 ```
@@ -83,7 +86,7 @@ Al terminar, el zip de logs se sube a la carpeta de red (`NodeDeploy_Success` / 
 |---|---|
 | 0 | Todo OK y nada pide reiniciar. |
 | 1 | Alguna app falló (se cortó rápido y se siguió con las demás; cierre pospuesto). Mira "Atención": motivo, en qué se quedó y las últimas líneas de su log. Arréglalo y relanza el script (salta lo ya instalado). |
-| 3 | Hace falta reiniciar (dominio, Lenovo, Windows Update o un instalador): **reinicia solo a los 15 s** (`shutdown /a` lo cancela; si el firmware pide apagar, apaga: enciéndelo luego), salvo que falte unir el dominio pedido. Si las actualizaciones siguen instalándose, reinicia el vigilante cuando terminen: no lo apagues. |
+| 3 | Hace falta reiniciar (apps instaladas, ficheros pendientes, dominio, Lenovo, Windows Update, McAfee quitado o un instalador): **reinicia solo a los 15 s** (`shutdown /a` lo cancela; si el firmware pide apagar, apaga: enciéndelo luego), salvo que falte unir el dominio pedido. Si las actualizaciones siguen instalándose, reinicia el vigilante cuando terminen: no lo apagues. |
 
 ## 5) Validar a mano
 

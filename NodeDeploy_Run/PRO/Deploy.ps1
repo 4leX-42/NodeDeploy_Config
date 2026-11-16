@@ -116,6 +116,14 @@
     v5.7.7: Cortex XDR no se instala con la bateria baja (Error 29002): aviso "SIN CARGADOR" en PRE-CHECKS y, si
     falla por eso, se reintenta cada 30 s hasta 10 min esperando al cargador; si no, fallo con el motivo claro.
     PDFelement 10 se detecta en Wondershare\PDFelement10 (antes, "colgado" en FileAssociation contaba como fallo).
+    v5.7.8: fabricante detectado una vez al arrancar (Get-DeviceVendor) y en el log con lo que se le hara: Lenovo
+    -> Lenovo.ps1; LG -> quitar McAfee; Samsung -> Samsung.ps1; todos -> Windows Update. Samsung.ps1 (tras Windows
+    Update) deja el diagnostico del equipo (Recoger-Equipo.ps1 -Rapido) en los logs y sus claves en el log, para ver
+    por que los Samsung no actualizan ni reinician. -NoSamsung lo omite.
+    Reinicio del final: tambien si esta pasada instalo apps o quedan ficheros a sustituir al reiniciar
+    (PendingFileRenameOperations). Un Galaxy Book6 con 9 apps nuevas y 71 ficheros pendientes acababa en "Nada pide
+    reiniciar" y no reiniciaba nunca; no era cosa de Samsung. Windows Update: los controladores de disco descartados
+    (Areca...) se ocultan, para que Windows no los instale despues por su cuenta.
 
 .PARAMETER Phase
     full | install | resume -> instala lo pendiente (resume re-detecta y reintenta)
@@ -153,6 +161,7 @@ param(
     [switch]$NoOptimize,                 # sin optimizacion de Windows (Optimize.ps1)
     [switch]$NoLenovoUpdates,            # sin actualizaciones de Lenovo (Lenovo.ps1)
     [switch]$NoMcAfee,                   # no quitar el McAfee de fabrica en los LG (Quitar-McAfee-LG.ps1)
+    [switch]$NoSamsung,                  # sin el paso de los Samsung (Samsung.ps1: diagnostico en los logs)
     [switch]$NoBIOS,                     # actualizaciones de Lenovo sin firmware/BIOS
     [string]$TimeZone = 'Romance Standard Time',  # zona horaria si la del equipo no es de Espana; 'no' = no tocar la hora
     [switch]$NoWindowsUpdate,            # sin actualizaciones de Windows Update (WindowsUpdate.ps1)
@@ -170,7 +179,7 @@ try {
     $OutputEncoding           = [Text.UTF8Encoding]::new($false)
 } catch {}
 
-$Script:Version       = '5.7.7'
+$Script:Version       = '5.7.8'
 $Script:SessionId     = [guid]::NewGuid().ToString('N').Substring(0,8)
 $Script:StartTime     = Get-Date
 $Script:ScriptDir     = Split-Path -Parent $PSCommandPath
@@ -1078,6 +1087,26 @@ function Resolve-AppPath {
 
 function Get-ArchName { if ($Script:IsArm64) { 'ARM64' } else { 'x64' } }
 
+# Fabricante del equipo: decide sus pasos propios (Lenovo.ps1, Quitar-McAfee-LG.ps1, Samsung.ps1). Windows Update
+# (controladores y firmware) va en todos. Solo laboratorio: NODEDEPLOY_TEST_VENDOR=Samsung|LG|Lenovo|Surface lo fuerza.
+function Get-DeviceVendor {
+    $cs = Get-CimInstance Win32_ComputerSystem
+    $m  = "$($cs.Manufacturer)"
+    $n  = if ($env:NODEDEPLOY_TEST_VENDOR) { $env:NODEDEPLOY_TEST_VENDOR }
+          elseif ($m -match 'LENOVO') { 'Lenovo' }
+          elseif ($m -match 'SAMSUNG') { 'Samsung' }
+          elseif ($m -match '^LG\b|LG Electronics') { 'LG' }
+          elseif ("$m $($cs.Model)" -match 'Surface') { 'Surface' }
+          else { 'Otro' }
+    $plan = switch ($n) {
+        'Lenovo'  { 'Lenovo.ps1 (controladores, firmware y BIOS de Lenovo) + Windows Update' }
+        'Samsung' { 'Windows Update (controladores y BIOS de Samsung) + Samsung.ps1 (diagnostico en los logs)' }
+        'LG'      { 'quitar McAfee de fabrica + Windows Update' }
+        default   { 'Windows Update (controladores y firmware)' }
+    }
+    [pscustomobject]@{ Name = $n; Text = ("$m $($cs.SystemFamily) $($cs.Model)" -replace '\s+', ' ').Trim(); Plan = $plan }
+}
+
 function Test-AppArch {
     # App solo para una arquitectura (OnlyArch = 'x64' | 'ARM64'); sin OnlyArch vale para las dos
     param($App)
@@ -1104,8 +1133,11 @@ function Get-AutoRebootDecision {
     # Why = lo que lo impide, solo dos cosas: actualizaciones aun instalandose (lo recoge el vigilante) o un dominio
     #       pedido que aun no esta unido (el dominio va siempre antes del reinicio).
     # Warn = avisos que NO frenan el reinicio (app con fallo, cierre pospuesto): se apuntan en el informe.
+    # v5.7.8: tambien apps instaladas en esta pasada y ficheros a sustituir al reiniciar (PendingFileRenameOperations):
+    # los MSI van sin Restart Manager y lo que estaba en uso se cambia al reiniciar. Un Samsung con 9 apps nuevas y 71
+    # ficheros pendientes quedaba en "Nada pide reiniciar" (AND-SAMMONICA, 12-nov-2026).
     param($Records, $FinalizeStatus, [bool]$DomainWanted, $LenovoResult, $WuResult, [bool]$WindowsPending, [bool]$UpdatesRunning,
-          [bool]$McAfeeRemoved)
+          [bool]$McAfeeRemoved, [bool]$FilesPending)
     $fs = $FinalizeStatus
     $lnPend = @(if ($LenovoResult) { $LenovoResult.pending })
     $need = @()
@@ -1114,7 +1146,10 @@ function Get-AutoRebootDecision {
     if ($lnPend -match 'REBOOT|SHUTDOWN')   { $need += 'actualizaciones de Lenovo' }
     if ($WuResult -and $WuResult.reboot)    { $need += 'Windows Update' }
     if (@($Records | Where-Object { $_.status -eq 'ok_reboot' }).Count) { $need += 'instaladores' }
+    $newApps = @($Records | Where-Object { $_.status -in 'ok', 'ok_unverified' -and -not $_.preinstalled }).Count
+    if ($newApps -and -not ($need -contains 'instaladores')) { $need += "apps instaladas ($newApps)" }
     if ($WindowsPending -and -not ($WuResult -and $WuResult.reboot)) { $need += 'Windows lo pide' }
+    elseif ($FilesPending) { $need += 'ficheros a sustituir al reiniciar' }
     $why = @()
     if ($UpdatesRunning) { $why += 'actualizaciones aun instalandose' }
     if ($DomainWanted -and -not ($fs -and $fs.DomainDone)) { $why += 'falta unir al dominio (va antes del reinicio)' }
@@ -2247,21 +2282,22 @@ if ($Script:DoOptimize) {
     Write-Log 'Optimizacion de Windows en segundo plano: apps de Store sobrantes, publicidad, Bing, widgets' 'INFO'
 }
 
+# Fabricante: una sola deteccion; cada marca lleva sus pasos (Lenovo, LG, Samsung) y todas Windows Update.
+$Script:Vendor = Get-DeviceVendor
+Write-Log "Fabricante: $($Script:Vendor.Name) ($($Script:Vendor.Text)) -> $($Script:Vendor.Plan)" 'INFO'
+
 # Actualizaciones de Lenovo en segundo plano (controladores ya; red, firmware y BIOS al terminar las apps).
 $Script:LenovoProc = $null; $Script:LenovoResult = $null
 $Script:LenovoPs1    = Join-Path $Script:ScriptDir 'Lenovo.ps1'
 $Script:LenovoJson   = Join-Path $Script:LogDir 'lenovo_updates.json'
 $Script:LenovoSignal = Join-Path $Script:LogDir 'lenovo_continuar.flag'
 if (($Phase -in 'full','install','resume') -and -not $DryRun -and -not $NoLenovoUpdates -and (Test-Path $Script:LenovoPs1)) {
-    $mfr = (Get-CimInstance Win32_ComputerSystem).Manufacturer
-    if ($mfr -match 'LENOVO') {
+    if ($Script:Vendor.Name -eq 'Lenovo') {
         Remove-Item -LiteralPath $Script:LenovoJson, $Script:LenovoSignal -Force -ErrorAction SilentlyContinue
         $lnArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$($Script:LenovoPs1)`" -LenovoMode run -OutJson `"$($Script:LenovoJson)`" -SignalFile `"$($Script:LenovoSignal)`" -ModuleSource `"$(Join-Path $Source 'Lenovo')`""
         if ($NoBIOS) { $lnArgs += ' -NoBIOS' }
         $Script:LenovoProc = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -PassThru -ArgumentList $lnArgs
         Write-Log 'Actualizaciones de Lenovo en segundo plano: controladores ya; red, firmware y BIOS al terminar las apps' 'INFO'
-    } else {
-        Write-Log "Sin actualizaciones de Lenovo: el equipo es $mfr" 'INFO'
     }
 }
 
@@ -2310,8 +2346,7 @@ if (-not $DryRun) {
 # LG trae McAfee de fabrica y choca con ESET/Cortex: se quita antes de instalar nada (sincrono, sin reiniciar).
 $Script:McAfeePs1 = Join-Path $Script:ScriptDir 'Quitar-McAfee-LG.ps1'
 if (($Phase -in 'full','install','resume') -and -not $DryRun -and -not $NoMcAfee -and (Test-Path $Script:McAfeePs1)) {
-    $mfr = (Get-CimInstance Win32_ComputerSystem).Manufacturer
-    if ($mfr -match '^LG\b|LG Electronics') {
+    if ($Script:Vendor.Name -eq 'LG') {
         Write-Step 'MCAFEE (LG)'
         $mcLog = Join-Path $Script:LogDir ("McAfee_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
         $mcProc = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -PassThru `
@@ -2538,6 +2573,32 @@ if ($Script:WuProc) {
     }
 }
 
+# Samsung: sus controladores y BIOS ya van por Windows Update (arriba); no hay herramienta de Samsung desatendida.
+# Samsung.ps1 deja el diagnostico del equipo en los logs (suben con el zip) y sus claves en este log. Max. 5 min.
+$Script:SamsungResult = $null
+if ($Script:Vendor.Name -eq 'Samsung' -and ($Phase -in 'full','install','resume') -and -not $DryRun -and -not $NoSamsung) {
+    $smPs1 = Join-Path $Script:ScriptDir 'Samsung.ps1'
+    if (Test-Path $smPs1) {
+        Write-Step 'SAMSUNG'
+        $smJson = Join-Path $Script:LogDir 'samsung.json'
+        Remove-Item -LiteralPath $smJson -Force -ErrorAction SilentlyContinue
+        Write-Log 'Samsung: diagnostico del equipo (Windows Update, reinicio, controladores; solo lee, ~30 s)...' 'INFO'
+        $smProc = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -PassThru `
+            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$smPs1`" -SamsungMode run -OutJson `"$smJson`" -OutDir `"$($Script:LogDir)`""
+        if (-not $smProc.WaitForExit(300000)) {
+            try { $smProc.Kill() } catch {}
+            Write-Log 'Samsung: el diagnostico no termino en 5 min; se sigue sin el' 'WARN'
+        } elseif (Test-Path -LiteralPath $smJson) {
+            $Script:SamsungResult = Get-Content -LiteralPath $smJson -Raw | ConvertFrom-Json
+            $sr = $Script:SamsungResult
+            Write-Log "Samsung: diagnostico en $(Split-Path -Leaf "$($sr.zip)") ($($sr.seconds) s)$(if (@($sr.notes).Count) { " | $(@($sr.notes) -join '; ')" })" 'OK'
+            foreach ($k in @($sr.claves)) { Write-Log "  Samsung: $k" 'WARN' }
+        } else {
+            Write-Log 'Samsung: el diagnostico no dejo resultado' 'WARN'
+        }
+    }
+}
+
 # Optimizacion de Windows: resultado de la limpieza + arranque (las entradas ya existen: apps instaladas).
 if ($Script:DoOptimize -and (Get-Command Set-StartupPolicy -ErrorAction SilentlyContinue)) {
     Write-Step 'OPTIMIZACION DE WINDOWS'
@@ -2589,9 +2650,11 @@ if ($Script:FinalizeAnswers) {
     # Lenovo, Windows Update, instaladores o Windows. Nunca antes del dominio: si se pidio dominio y no esta unido,
     # no. Si las actualizaciones siguen instalandose, un vigilante reinicia cuando terminen. Una app con fallo no
     # lo frena (se apunta). Si Lenovo pide apagar (algun firmware), se apaga.
+    $pr  = Test-PendingReboot
     $dec = Get-AutoRebootDecision -Records @(Get-AllRecords $State) -FinalizeStatus $Script:FinalizeStatus -DomainWanted $Script:DomainWanted `
-        -LenovoResult $Script:LenovoResult -WuResult $Script:WuResult -WindowsPending ([bool](Test-PendingReboot).HardPending) `
-        -UpdatesRunning ([bool]($Script:LenovoRunning -or $Script:WuRunning)) -McAfeeRemoved ([bool]$Script:McAfeeRemoved)
+        -LenovoResult $Script:LenovoResult -WuResult $Script:WuResult -WindowsPending ([bool]$pr.HardPending) `
+        -UpdatesRunning ([bool]($Script:LenovoRunning -or $Script:WuRunning)) -McAfeeRemoved ([bool]$Script:McAfeeRemoved) `
+        -FilesPending ([bool]@($pr.SoftSignals).Count)
     $warnTxt = if ($dec.Warn) { " | aviso: $($dec.Warn -join '; ')" } else { '' }
     if ($NoAutoReboot) {
         $Script:FinalizeResult['Reinicio automatico'] = "desactivado (-NoAutoReboot)$(if ($dec.Need) { "; pediria: $($dec.Need -join ', ')" })"

@@ -1,6 +1,6 @@
 # NodeDeploy PRO v5
 
-> Despliegue desatendido de las apps corporativas Andersen en portátiles Lenovo.
+> Despliegue desatendido de las apps corporativas Andersen en portátiles Lenovo (ThinkPad L14 Gen 6/7), LG (gram 14ZB90S), Samsung (Galaxy Book6) y Microsoft (Surface Pro 11, ARM64). Detecta la marca y hace sus pasos propios: ver "Según el fabricante".
 > Dos carriles en paralelo (MSI + EXE), Outlook clásico en background, reintentos reales, resumible y validado.
 
 ---
@@ -99,7 +99,7 @@ Al final, **solo si ninguna app quedó en fallo** (si no, se pospone y se hace a
 | 1 | Activa el Administrador integrado (SID `-500`, "Administrador") con esa contraseña | |
 | 2 | Saca la cuenta estándar del grupo Administradores (SID `S-1-5-32-544`): `usuario`, `Usuario`, `user` o `User` (todas las que existan) | Solo si el paso 1 fue bien: nunca deja el equipo sin administrador local. |
 | 3 | Une el equipo al dominio | Lo último. Pide reinicio (exit 3). Si ya estaba en ese dominio, no hace nada. |
-| 4 | **Reinicio automático** (15 s de aviso; `shutdown /a` lo cancela) | Lo último, después del paso del dominio, **siempre que algo lo pida**: unión al dominio, Lenovo, Windows Update, un instalador o Windows. Solo dos cosas lo frenan: un dominio pedido que no quedó unido (el dominio va antes del reinicio) o actualizaciones aún instalándose (entonces un **vigilante**, `RebootMonitor.ps1` desde `C:\ProgramData\NodeDeploy`, espera a que terminen sin cortarlas, máx. 4 h, y reinicia con 60 s de aviso si lo piden ellas o lo que ya pedía reinicio al terminar, p. ej. el dominio; antes borra la carpeta del escritorio si toca; registro en `vigilante.log`). Una app con fallo no lo frena: sale en "Atención". Si un firmware de Lenovo pide apagar, apaga (`shutdown /s`). `-NoAutoReboot` lo desactiva (pruebas). |
+| 4 | **Reinicio automático** (15 s de aviso; `shutdown /a` lo cancela) | Lo último, después del paso del dominio, **siempre que algo lo pida**: apps instaladas en la pasada, ficheros a sustituir al reiniciar (PendingFileRenameOperations; v5.7.8), unión al dominio, Lenovo, Windows Update, McAfee quitado, un instalador o Windows. Si todo estaba ya instalado y no queda nada pendiente, no reinicia. Solo dos cosas lo frenan: un dominio pedido que no quedó unido (el dominio va antes del reinicio) o actualizaciones aún instalándose (entonces un **vigilante**, `RebootMonitor.ps1` desde `C:\ProgramData\NodeDeploy`, espera a que terminen sin cortarlas, máx. 4 h, y reinicia con 60 s de aviso si lo piden ellas o lo que ya pedía reinicio al terminar, p. ej. el dominio; antes borra la carpeta del escritorio si toca; registro en `vigilante.log`). Una app con fallo no lo frena: sale en "Atención". Si un firmware de Lenovo pide apagar, apaga (`shutdown /s`). `-NoAutoReboot` lo desactiva (pruebas). |
 | 5 | Herramientas manuales | Solo se abren `lusrmgr.msc` (si falló algo de cuentas) o `sysdm.cpl` (si el dominio no quedó hecho). Con todo comprobado, no se abre nada. |
 
 Las contraseñas solo están en memoria: no van a log, state ni informe. El resultado sale en la sección **Cierre del equipo** del informe. Probado en la VM (`Lab\guest\Test-Finalize.ps1`); nunca en el PC del técnico.
@@ -128,6 +128,23 @@ Proceso aparte desde t=0, solo en equipos Lenovo, con el módulo oficial `Lenovo
 | Reinicio forzado inmediato (tipo 1, p. ej. firmware de docks) o no desatendidas | nunca |
 
 No reinicia a mitad: informa de lo pendiente en la sección **Actualizaciones Lenovo** del informe y el reinicio (o apagado, si el firmware lo pide) lo hace el reinicio automático del final, después del dominio. Deploy.ps1 espera a que acabe (máx. 30 min) antes del cierre del equipo. `-NoLenovoUpdates` lo omite; `-NoBIOS` deja fuera firmware y BIOS.
+
+## Según el fabricante (v5.7.8)
+
+Deploy detecta el fabricante al arrancar y lo escribe en el log con lo que va a hacer (`Fabricante: Samsung (...) -> ...`):
+
+| Fabricante | Pasos propios | Además |
+|---|---|---|
+| Lenovo | `Lenovo.ps1`: controladores, firmware y BIOS del catálogo de Lenovo | Windows Update |
+| LG | `Quitar-McAfee-LG.ps1`: quita el McAfee de fábrica antes de instalar | Windows Update |
+| Samsung | `Samsung.ps1`: diagnóstico del equipo en los logs (después de Windows Update) | Windows Update |
+| Surface y otros | — | Windows Update |
+
+Samsung no tiene herramienta para actualizar en silencio: sus controladores y su BIOS llegan por Windows Update, que ya los instala (`WindowsUpdate.ps1`; el firmware, con cargador y BitLocker en pausa). Como los Samsung no terminaban de actualizar ni reiniciaban solos, `Samsung.ps1` pasa `Recoger-Equipo.ps1 -Rapido` (~30 s, solo lee). El zip `Equipo_<PC>_<fecha>.zip` va dentro del zip de logs, y sus **claves** salen en el log (`Samsung: Reinicio PENDIENTE...`, `Windows Update en PAUSA...`). Con eso se decide qué más hacer en `Samsung.ps1`. `-NoSamsung` lo omite.
+
+**Primer Samsung diagnosticado** (Galaxy Book6, 12-nov-2026): Windows Update **sí** le instaló sus controladores y su BIOS 2.4.18. El problema era el reinicio, y no tenía que ver con Samsung: la decisión del final solo contaba las señales "fuertes" de Windows, así que una pasada con 9 apps nuevas y 71 ficheros pendientes de sustituir acababa en "Nada pide reiniciar". Desde v5.7.8 también reinicia si se instalaron apps o hay ficheros pendientes; si todo estaba ya instalado, sigue sin reiniciar. Además, el controlador de disco Areca que Windows Update ofrece por error ahora se oculta, para que Windows no lo instale por su cuenta.
+
+`Recoger-Equipo.ps1` también se puede pasar a mano en cualquier portátil (como administrador; deja el zip en `C:\Diag` y en el escritorio público). Sin `-Rapido` también busca las actualizaciones pendientes, saca el log de Windows Update y `gpresult`, y tarda de 1 a 15 min.
 
 ## Windows Update (v5.7.3, `WindowsUpdate.ps1`): solo controladores y firmware
 
@@ -198,6 +215,7 @@ Los parámetros extra se pasan tal cual a `Deploy.ps1` (`Deploy.bat full -SkipAV
 | `-NoOptimize` | Sin optimización de Windows (`Optimize.ps1`: limpieza de apps, publicidad, arranque, barra de tareas, TRIM). |
 | `-NoLenovoUpdates` | Sin actualizaciones de Lenovo (`Lenovo.ps1`). |
 | `-NoMcAfee` | En los LG, no quita el McAfee de fábrica (`Quitar-McAfee-LG.ps1`). |
+| `-NoSamsung` | En los Samsung, sin el diagnóstico de `Samsung.ps1`. |
 | `-NoWindowsUpdate` | Sin actualizaciones de Windows Update (`WindowsUpdate.ps1`). |
 | `-NoAutoReboot` | Sin reinicio automático ni vigilante (laboratorio / pruebas). |
 | `-KeepFolder` | No borra la carpeta del escritorio al terminar. |

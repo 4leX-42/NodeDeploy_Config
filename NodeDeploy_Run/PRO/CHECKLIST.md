@@ -117,6 +117,12 @@ Línea **Windows Update** de `POSTVALIDATE_REPORT.md`: controladores y firmware 
 
 Sección **Actualizaciones Lenovo** de `POSTVALIDATE_REPORT.md`: instaladas, con fallo, no instaladas (con el motivo) y pendiente de reinicio. Si pone "sin cargador", conecta el cargador y relanza `Deploy.bat resume` para el firmware/BIOS. Tras el reinicio, en Commercial Vantage no debería quedar nada crítico pendiente.
 
+## Según la marca
+
+- **LG**: en Aplicaciones instaladas no queda nada de McAfee (WPS, WebAdvisor). Si queda, Quitar-McAfee-LG.ps1 lo dice en el log del despliegue (McAfee: queda algo instalado).
+- **Samsung**: en el log sale Samsung: diagnostico en Equipo_<PC>_<fecha>.zip y, debajo, sus claves. El zip va dentro del zip de logs de la carpeta de red.
+- **Todas**: si el equipo no reinició solo, mirar si existe C:\ProgramData\NodeDeploy\reinicio.log (si no, Deploy decidió no reiniciar: ver [CIERRE] en el log) y pasar Recoger-Equipo.ps1.
+
 ## Reboot recommendation
 
 Tras instalación de:

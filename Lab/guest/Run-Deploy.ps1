@@ -11,6 +11,10 @@ param(
 )
 $ErrorActionPreference = 'Continue'
 if ($ExtraArgsB64) { $ExtraArgs = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($ExtraArgsB64)) }
+# "ENV:NOMBRE=valor" dentro de ExtraArgs pone una variable de entorno para Deploy (p. ej. ENV:NODEDEPLOY_TEST_VENDOR=Samsung)
+$ExtraArgs = (@($ExtraArgs -split '\s+' | Where-Object { $_ } | ForEach-Object {
+    if ($_ -match '^ENV:(\w+)=(.+)$') { Set-Item -Path "env:$($matches[1])" -Value $matches[2] } else { $_ }
+}) -join ' ')
 $root = 'C:\nodedeploy'
 $run  = 'C:\LabRun'
 New-Item -ItemType Directory -Force -Path $run | Out-Null
