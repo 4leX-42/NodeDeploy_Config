@@ -18,6 +18,8 @@ Todo lo que instala software se ejecuta dentro de la VM mediante `vmrun`. En el 
 |---|---|
 | `00-clean-os` | Windows 11 Pro 25H2 es-ES recién instalado, Defender activo. |
 | `01-lenovo-baseline` | Como un Lenovo recién sacado de la caja: **Microsoft 365 Apps for business** (Word/Excel/PPT, Current Channel) **sin Outlook clásico**. |
+| `02-clean-pwd-noexpira` | `00-clean-os` con la contraseña de `labadmin` sin caducidad (ver Detalles). **Usar este en vez de `00`.** |
+| `03-office-x86` | `02` + Microsoft 365 Apps **de 32 bits** (Word, Excel, PowerPoint, Outlook clásico), Current Channel, es-es, sin licencia. Para probar instaladores que dependen de la arquitectura de Office (iManage Work Desktop x86). |
 
 Los instaladores de **ESET y Cortex XDR no se copian nunca a la VM** (`guest\Sync-NodeDeploy.ps1`) y todas las pruebas usan `-SkipAV`.
 
@@ -59,6 +61,9 @@ compartida de la VM sigue a la copia desde la que se lanza la prueba. `lab.local
 ## Detalles
 
 - Credenciales del invitado en `lab.local.json` (generadas al crear la VM, fuera de git).
+- **Contraseña caducada tras revertir** (2026-11-16): los snapshots `00`/`01` son del 24-sep; al arrancar, el reloj del invitado salta a hoy, la contraseña de `labadmin` supera los 42 días y `vmrun` da `Error: Unknown error` en toda operación con credenciales (unos minutos perdidos en cada prueba). Arreglado en `02` y `03` con `net accounts /maxpwage:unlimited` (en este Windows no existe `wmic`). Con eso, revertir, arrancar y tener el invitado listo tarda unos 10 s.
+- **Copiar carpetas grandes: `Sync-LabFolderToGuest`** (LabCommon): carpeta compartida + `robocopy` dentro del invitado. Medido: 519 MB en 5 s, frente a más de 4 min con `copyFileFromHostToGuest` (~2 MB/s), que queda solo para scripts pequeños. El share tarda unos segundos en verse tras arrancar (la función reintenta) y la orden de `robocopy` va en un `.cmd` porque las comillas no sobreviven a `runProgramInGuest`.
+- El nombre de las columnas de `schtasks /Query /FO CSV` va en el idioma del invitado (es-ES: `Estado`, no `Status`): para esperar a una tarea, mirar un fichero de resultado, no esa columna.
 - VMware Tools va embebido en la ISO desatendida (`vmtools\`): Workstation no monta `windows.iso` como CD normal y Tools 12.x ya no trae `setup64.exe` (solo `setup.exe`).
 - Primer inicio: `templates\lab-firstlogon.ps1` (log en `C:\lab_firstlogon.log` dentro de la VM).
 - La VM usa firmware BIOS (instalación sin "Press any key"), sin vTPM (no requiere cifrado), NAT, 4 vCPU / 4 GB.
