@@ -1,8 +1,48 @@
-# NodeDeploy PRO v5 — despliegue desatendido de las apps corporativas (Lenovo, LG, Samsung y Surface)
+<div align="center">
 
-Prepara un portátil nuevo de fábrica: instala las 20 apps corporativas, actualiza controladores, firmware y BIOS, optimiza Windows, hace el cierre (Administrador, usuario y dominio) y reinicia. **Detecta el fabricante y hace lo que necesita cada marca**; no hay que elegir nada.
+# NodeDeploy PRO v5
 
-## Equipos
+Despliegue desatendido de un portátil nuevo: 20 apps corporativas, controladores, firmware y BIOS, optimización, dominio y reinicio.
+
+![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-1f1f1f?style=flat-square) ![PowerShell](https://img.shields.io/badge/PowerShell-5.1-1f1f1f?style=flat-square&logo=powershell&logoColor=white) ![x64 | ARM64](https://img.shields.io/badge/x64_%7C_ARM64-1f1f1f?style=flat-square) ![Lenovo · LG · Samsung · Surface](https://img.shields.io/badge/Lenovo_%C2%B7_LG_%C2%B7_Samsung_%C2%B7_Surface-c8a25a?style=flat-square)
+
+</div>
+
+## <img src="https://api.iconify.design/lucide/play.svg?color=%238b949e" width="18" align="top"> Uso
+
+1. Carpeta `nodedeploy\` del M.2 al **Escritorio** del portátil.
+2. Red por cable y **cargador conectado**.
+3. Doble clic en `Pincha_pa_instalar.bat`: dominio y contraseña del Administrador local.
+4. ~15-20 min. Reinicia solo a los 15 s si hace falta (`shutdown /a` lo cancela).
+
+Informe: `NodeDeploy_Run\POSTVALIDATE_REPORT.md`. Si todo quedó bien, la carpeta del escritorio se borra sola.
+
+## <img src="https://api.iconify.design/lucide/laptop.svg?color=%238b949e" width="18" align="top"> Equipos
+
+| Marca | Probado | Pasos propios |
+|---|---|---|
+| **Lenovo** | ThinkPad L14 Gen 6 / Gen 7 | `Lenovo.ps1`: controladores, firmware y BIOS del catálogo oficial |
+| **LG** | gram 14ZB90S | `Quitar-McAfee-LG.ps1` antes de ESET y Cortex |
+| **Samsung** | Galaxy Book6 | Solo Windows Update; reiniciar a mano |
+| **Microsoft** | Surface Pro 11 (ARM64) | Instaladores ARM64 donde existen |
+| Otras | — | Solo Windows Update |
+
+<details>
+<summary><img src="https://api.iconify.design/lucide/list.svg?color=%238b949e" width="18" align="top"> <b>Detalle de los pasos</b></summary>
+
+1. Copia la **carpeta completa `nodedeploy\`** del M.2 al **Escritorio** del portátil (más rápido que ejecutarlo desde el M.2; al terminar bien, se borra sola).
+2. Portátil con Windows 10/11 (x64 o ARM64) y su Microsoft 365 de fábrica (sin él: `-InstallFullOffice`), con red por cable y **cargador conectado** (sin él no se instala firmware/BIOS ni Cortex XDR con la batería baja).
+3. **Doble clic `nodedeploy\Pincha_pa_instalar.bat`** (o `NodeDeploy_Run\PRO\Deploy.bat`). Acepta UAC y responde las preguntas del arranque:
+   - **dominio**: menú con flechas (o el número) con las sedes de `NodeDeploy_Run\PRO\Dominios.txt` (no va a GitHub), `Otro` para escribirlo a mano o `0` = sin dominio; si hay dominio, usuario con permiso para unir equipos + contraseña;
+   - **contraseña del Administrador local** (dos veces).
+   
+   Si relanzas el script en un equipo ya terminado, no vuelve a preguntar lo ya hecho (Administrador activado, equipo en dominio).
+4. Espera (~15-20 min; más si hay muchas actualizaciones del fabricante o de Windows). Mientras instala, en segundo plano, **optimiza Windows** (quita apps de Store que sobran, publicidad, Bing, widgets), hace los **pasos de su marca** (tabla de arriba) e **instala controladores y firmware de Windows Update**. Al final deja sin arrancar con Windows PDFelement, PDF24, Everything, b4notify y Edge (AnyDesk siempre activo), ancla Outlook y Teams a la barra de tareas (sin Microsoft Store) y, si todas las apps quedan OK: Administrador local activado, la cuenta `usuario` (o `user`) fuera de Administradores y, lo último, unión al dominio.
+5. **Reinicio**: si algo lo pide (dominio unido, Lenovo, Windows Update, McAfee quitado, instaladores), **reinicia solo a los 15 s** (`shutdown /a` lo cancela), siempre después del dominio. Si un firmware de Lenovo pide apagar, apaga. Si las actualizaciones siguen instalándose, un **vigilante** reinicia en cuanto terminen. Una app con fallo no lo frena (sale en el informe); un dominio pedido y sin unir, sí. Programar el reinicio queda apuntado en `C:\ProgramData\NodeDeploy\reinicio.log`.
+</details>
+
+<details>
+<summary><img src="https://api.iconify.design/lucide/laptop.svg?color=%238b949e" width="18" align="top"> <b>Detalle por marca</b></summary>
 
 Modelos que ya han pasado por NodeDeploy (sacados de los logs de la carpeta de red, nov-2026):
 
@@ -15,18 +55,10 @@ Modelos que ya han pasado por NodeDeploy (sacados de los logs de la carpeta de r
 | Cualquier otra | — | — | solo Windows Update |
 
 En **todas** las marcas: Windows Update de controladores y firmware (`WindowsUpdate.ps1`), optimización de Windows, cierre y reinicio. El log del despliegue apunta el equipo al arrancar (`Equipo : <PC> | <marca> <modelo> | ...`).
+</details>
 
-## M.2 / USB — flujo de 4 pasos
-
-1. Copia la **carpeta completa `nodedeploy\`** del M.2 al **Escritorio** del portátil (más rápido que ejecutarlo desde el M.2; al terminar bien, se borra sola).
-2. Portátil con Windows 10/11 (x64 o ARM64) y su Microsoft 365 de fábrica (sin él: `-InstallFullOffice`), con red por cable y **cargador conectado** (sin él no se instala firmware/BIOS ni Cortex XDR con la batería baja).
-3. **Doble clic `nodedeploy\Pincha_pa_instalar.bat`** (o `NodeDeploy_Run\PRO\Deploy.bat`). Acepta UAC y responde las preguntas del arranque:
-   - **dominio**: menú con flechas (o el número) con las sedes de `NodeDeploy_Run\PRO\Dominios.txt` (no va a GitHub), `Otro` para escribirlo a mano o `0` = sin dominio; si hay dominio, usuario con permiso para unir equipos + contraseña;
-   - **contraseña del Administrador local** (dos veces).
-   
-   Si relanzas el script en un equipo ya terminado, no vuelve a preguntar lo ya hecho (Administrador activado, equipo en dominio).
-4. Espera (~15-20 min; más si hay muchas actualizaciones del fabricante o de Windows). Mientras instala, en segundo plano, **optimiza Windows** (quita apps de Store que sobran, publicidad, Bing, widgets), hace los **pasos de su marca** (tabla de arriba) e **instala controladores y firmware de Windows Update**. Al final deja sin arrancar con Windows PDFelement, PDF24, Everything, b4notify y Edge (AnyDesk siempre activo), ancla Outlook y Teams a la barra de tareas (sin Microsoft Store) y, si todas las apps quedan OK: Administrador local activado, la cuenta `usuario` (o `user`) fuera de Administradores y, lo último, unión al dominio.
-5. **Reinicio**: si algo lo pide (dominio unido, Lenovo, Windows Update, McAfee quitado, instaladores), **reinicia solo a los 15 s** (`shutdown /a` lo cancela), siempre después del dominio. Si un firmware de Lenovo pide apagar, apaga. Si las actualizaciones siguen instalándose, un **vigilante** reinicia en cuanto terminen. Una app con fallo no lo frena (sale en el informe); un dominio pedido y sin unir, sí. Programar el reinicio queda apuntado en `C:\ProgramData\NodeDeploy\reinicio.log`.
+<details>
+<summary><img src="https://api.iconify.design/lucide/triangle-alert.svg?color=%238b949e" width="18" align="top"> <b>Reinicio, fallos, informe y logs</b></summary>
 
 > **Ojo (v5.7.7)**: si las apps se instalaron pero nada de la lista lo pide (pasó con el primer Samsung), no reinicia aunque Windows tenga ficheros pendientes de sustituir. Hasta v5.7.8 (en pruebas), **reiniciar a mano** los equipos que acaben sin `reinicio.log`.
 
@@ -41,10 +73,10 @@ En **todas** las marcas: Windows Update de controladores y firmware (`WindowsUpd
 Solo se abren `lusrmgr.msc` / `sysdm.cpl` si hay algo de cuentas o dominio que revisar a mano.
 
 > El M.2 debe ser escribible: el script guarda estado y logs en `nodedeploy\NodeDeploy_Run\state\`.
+</details>
 
----
-
-## Atajos
+<details>
+<summary><img src="https://api.iconify.design/lucide/terminal.svg?color=%238b949e" width="18" align="top"> <b>Atajos</b></summary>
 
 | Quiero... | Comando |
 |---|---|
@@ -70,10 +102,10 @@ Solo se abren `lusrmgr.msc` / `sysdm.cpl` si hay algo de cuentas o dominio que r
 | Cleanup procesos iManage | `Deploy.bat cleanup` |
 | Reset / desinstalar (no toca el Office de fábrica) | `NodeDeploy_Run\PRO\Uninstall.ps1 -ConfirmReset` |
 | **Probar sin tocar este PC** | `Lab\README.md` (VM VMware desechable) |
+</details>
 
----
-
-## Cómo instala v5
+<details>
+<summary><img src="https://api.iconify.design/lucide/workflow.svg?color=%238b949e" width="18" align="top"> <b>Cómo instala v5</b></summary>
 
 ```
 t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft; plan B: ODT ──────┐
@@ -124,10 +156,10 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
 | PDFelement Business 10.1.5 | Inno Setup (`/NOPAGE`, log propio) | EXE |
 | NanaZip 7.0 | MSIX con DISM, para todos los usuarios (licencia `.xml` junto al paquete) | EXE |
 | Outlook clásico | ODT `OfficeSetup.exe` con `MatchInstalled` (~3 min; plan B: `OutlookClassic.exe`) | background, t=0 |
+</details>
 
----
-
-## Optimización de Windows (`Optimize.ps1`)
+<details>
+<summary><img src="https://api.iconify.design/lucide/gauge.svg?color=%238b949e" width="18" align="top"> <b>Optimización de Windows (<code>Optimize.ps1</code>)</b></summary>
 
 | Qué | Cómo | Cuándo |
 |---|---|---|
@@ -141,10 +173,10 @@ t=0  ┌─ Outlook clásico (background) ── instalador oficial de Microsoft
 | Comprobaciones | TRIM del SSD (se activa si estuviera apagado), software del fabricante a revisar (antivirus de prueba = choca con ESET/Cortex), lo que sigue arrancando con Windows | al final, en el informe |
 
 No se hace, a propósito: `winget upgrade --all` (cambiaría versiones validadas de las apps corporativas y alarga mucho), actualizaciones de características de Windows (cambio de versión: horas y riesgo), cambiar el plan de energía (son portátiles), desinstalar solo el software del fabricante (se informa para revisarlo). La lista de apps a quitar está al principio de `Optimize.ps1`.
+</details>
 
----
-
-## Estructura
+<details>
+<summary><img src="https://api.iconify.design/lucide/folder-tree.svg?color=%238b949e" width="18" align="top"> <b>Estructura</b></summary>
 
 ```
 nodedeploy\
@@ -169,8 +201,10 @@ nodedeploy\
 ├── Lab\                       ← laboratorio VMware: pruebas sin tocar el PC
 └── docs\                      ← HANDOFF (decisiones, pruebas, pendientes) · evaluación de seguridad de PDF24
 ```
+</details>
 
-## Documentación
+<details>
+<summary><img src="https://api.iconify.design/lucide/book-open.svg?color=%238b949e" width="18" align="top"> <b>Documentación</b></summary>
 
 - `NodeDeploy_Run\PRO\README.md` — detalle técnico (Office, iManage, logs, Intune).
 - `NodeDeploy_Run\PRO\QUICK_START.md` — guía rápida del técnico.
@@ -178,10 +212,10 @@ nodedeploy\
 - `docs\HANDOFF_2026-09-24.md` — diagnóstico, cambios de v5, resultados de las pruebas y pendientes.
 - `docs\PDF24_Evaluacion_Seguridad.txt` — evaluación de seguridad de PDF24 (firma, hash, antivirus, CVE, configuración) para ISO 27001.
 - `Lab\README.md` — laboratorio (VM de pruebas).
+</details>
 
----
-
-## Exit codes
+<details>
+<summary><img src="https://api.iconify.design/lucide/info.svg?color=%238b949e" width="18" align="top"> <b>Exit codes</b></summary>
 
 | Código | Significado |
 |---|---|
@@ -195,3 +229,6 @@ nodedeploy\
 ---
 
 _Última actualización: 2026-11-16 — NodeDeploy PRO v5.7.7 (Lenovo, LG, Samsung y Surface)_
+</details>
+
+<sub>Última actualización: 2026-11-16 — NodeDeploy PRO v5.7.7 (Lenovo, LG, Samsung y Surface)</sub>
